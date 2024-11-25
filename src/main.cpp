@@ -34,22 +34,27 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   *  Estava hibernando por 24hs, corrigi. À principio resolveu e o Sensor-01 que está com essa versão, voltou a funcionar.
   *  O Sensor-02 está com outra versão: BPLTwR_04.10.2021-05-LSE
   * 
-  * 23.11.2024 - Desativando o deepsleep para ativar o sensor na ponte
-  * 1min on e 1min off, ajustar para nã oficar tanto tempo on e desligar assim que transmitir
+  * 23.11.2024  - Alterando o código para ler e hibernar por 1 minuto entre leituras so ultrasom.
+  *             - 1min on e 1min off, ajustar para não ficar tanto tempo on e desligar assim que transmitir
+  * 24.11.2024  - alteramdo a função readUltrasom() para trabalhar com a mediana
   * 
   * TODO:
   * se funcionar sem hibernação, ajustar a leitura do ultrassom pela mediana.
   * reativar a hibernação e fazer dormir por 1min
+  * Precisa medir com a régua, para saber se está funcional
 */  
+
+#include <stdlib.h>
+
 //Identificação para o gateway saber quem está enviando os dados
 #define ID "Sensor_BluePill-01" //<=== MUDAR AQUI ====
 
-//#define enableSerialLog //Habilita log na Serial
+#define enableSerialLog //Enable Serial debug
 #define enableWatchDog //desativado o watchdog
 #include <Arduino.h>
 #include <STM32LowPower.h> //Deep Sleep
 int vaiDormir_flag = 0;
-#define enableRTCstm32 //RTC interno do STM32 
+#define enableRTCstm32 //STM32 internal RTC
 #ifdef enableRTCstm32
   #include <STM32RTC.h>
 #endif
@@ -138,6 +143,11 @@ int vaiDormir_flag = 0;
   }
 #endif
 
+//Protótipos das funções
+void readUltrasom();
+float calcularMediana(int *array, int tamanho);
+int comparar(const void *a, const void *b);
+
 #ifdef enableRTCstm32
   boolean onReceive_flag = 0;
   /* Get the rtc object */
@@ -198,14 +208,14 @@ int vaiDormir_flag = 0;
   boolean ultrasonicActive  = true;
 
   //=============================================================================================================
-  void setupUltrasom(){
-    // Ultrasonic Distance Sensor
+  // Ultrasonic Distance Sensor setup
+  void ultrasonic_setup(){
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);  
     #ifdef enableSerialLog
-      Serial.println("Inicialização do Sensor Ultrasônico OK!");
+      Serial.println("Setting up Ultrasonic Sensor.");
     #endif
-  }
+  } //end ultrasonic_setup
 
 //   void readUltrasom() { //Meu código original
 //     // ===== Sensor Ultrasonic =====
@@ -240,7 +250,65 @@ int vaiDormir_flag = 0;
 //         } //if
 //       delay(500); 
 //       }
-// #endif
+
+
+// Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
+void readUltrasom() {
+  int leituras[10];
+  int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
+
+  // Faz 10 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
+  for (int i = 0; i < tamanhoArray; i++) { //for1
+    checadistancia: // Label para goto
+    // for (int j = 0; j < 3; j++) { //for2
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(5);
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      pulseLength = pulseIn(echoPin, HIGH);
+      distanciaLida = pulseLength / 58;
+      delay(50);
+
+      if (distanciaLida > 500 || distanciaLida < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
+        // qtdMaxLeituras = qtdMaxLeituras + 1;
+        goto checadistancia;
+      }
+    // } //for2
+    leituras[i] = distanciaLida;
+  } //for1
+
+  // Calcula a mediana
+  float mediana = calcularMediana(leituras, tamanhoArray);
+
+  // Verifica se a mediana mudou significativamente
+  if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
+    lastEchoDistance = mediana;
+
+    Serial.print("Distancia Lida pelo Sensor Ultrasonico (mediana): ");
+    Serial.print(mediana); 
+    Serial.println("cm");
+    Serial.println("");
+  }
+
+  delay(50); //para economizar bateria, pode-se reduzir esse tempo
+}
+
+// Função para calcular a mediana
+float calcularMediana(int *array, int tamanho) {
+  qsort(array, tamanho, sizeof(int), comparar);
+
+  if (tamanho % 2 == 0) {
+    return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+  } else {
+    return (float)array[tamanho / 2];
+  }
+}
+
+int comparar(const void *a, const void *b) {
+  return (*(int *)a - *(int *)b);
+}
+
+#endif //enableUltraSom
 
 //////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
  void vaiDormir() {
@@ -450,7 +518,7 @@ void onReceive(int packetSize) {
     return false;
   }
 
-void checkonReceive() {
+void checkonReceive() { //TODO ver se essa é a funçã oque recebe o retorno do gateway
     if (onReceive_flag == 0) {
       int time = (rtc.getMinutes() - startUpMinute);
       Serial.print("time:   "); Serial.println(time);
@@ -477,9 +545,9 @@ boolean runClockEvery(unsigned long interval)
     return false;
   }
 
-  //Initialize LoRa module
   //=============================================================================================================
-  void startLoRA(){
+  //Initialize LoRa module
+  void start_LoRa(){
     //LoRa.setTxPower(20);
     //SPI LoRa pins
     LoRa.setPins(csPin, resetPin, irqPin);
@@ -493,36 +561,32 @@ boolean runClockEvery(unsigned long interval)
       delay(500);
     }
     if (counter == 10) {
-      Serial.println("Inicialização do LoRa falhou!"); 
-          int sleepTime = 1;
-          Serial.print("LoRa Falhou! Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
-          delay (100);
-      //vai dormir...
-      // LowPower.shutdown(1000 * 60 * sleepTime); //D.S por 1000ms* 60s * sleepTime/
+      Serial.println("LoRa initialization Failed!"); 
+          // delay (100);
     }
         if (counter < 10) {
           #ifdef enableSerialLog
-            Serial.println("Inicialização do LoRa OK!"); 
+            Serial.println("LoRa initialization OK!"); 
           #endif
     }
 
     //Setup receiver para receber o update da hora:
     #ifdef enableSerialLog
-      //Serial.println("LoRa Receiver Callback com LoRa Reset na PA0");
+      Serial.println("LoRa Receiver Callback com LoRa Reset na PA0");
       Serial.println("LoRa Simple Node");
-      //Serial.println("Only receive messages from gateways");
-      //Serial.println("Tx: invertIQ disable");
-      //Serial.println("Rx: invertIQ enable");
+      Serial.println("Only receive messages from gateways");
+      Serial.println("Tx: invertIQ disable");
+      Serial.println("Rx: invertIQ enable");
       Serial.println();
     #endif
     // register the receive callback
     LoRa.onReceive(onReceive); 
     LoRa.onTxDone(onTxDone);
     LoRa_rxMode();
-  }
+  } //end start_LoRa
 
   void sendReadings() {
-    if (runEvery(5000)) { // repeat every 5000 millis
+    if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
       LoRaMessage = String(ID) + "/" + String(distanciaLida) + "&" + String(distanciaLida);
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
@@ -534,26 +598,20 @@ boolean runClockEvery(unsigned long interval)
     }
   }
 
-#endif
+#endif //enableLoRa
 
 //////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
 // Mostra dados do sketch e configura a serial
 void sketchSetup() {
   Serial.begin(115200); 
   Serial.print("\nIniciando Sensor "); Serial.println(String(ID)); 
-    Serial.println("\nIlha 3d");
-    Serial.println("\n(48) 99852-6523");
-    Serial.println("\nwww.ilha3d.com");
-    Serial.println("\n");
-    Serial.println("Sistema versão: SAPM_Sensor_BluePill_20241123-01");
+    // Serial.println("\nIlha 3d");
+    // Serial.println("\n(48) 99852-6523");
+    // Serial.println("\nwww.ilha3d.com");
+    // Serial.println("\n");
+    Serial.println("System Version: SAPM_Sensor_BluePill_20241123-01 - mediana");
     Serial.println("");
 }
-
-//uint32_t WriteRegisterValue = 123456;
-//uint32_t ReadRegisterValue;
-//uint32_t WriteSRAMValue[10];
-//uint32_t ReadSRAMValue[10];
-
 
 void setup() {
   sketchSetup();
@@ -582,18 +640,16 @@ void setup() {
       vaiDormir();
     }
     disableBackupDomain();
-    // Init the watchdog timer with 10 seconds timeout
-    IWatchdog.begin(10000000);
-
+    IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
   #endif
 
-  //Habilita Enable da fonte do LoRa
-  pinMode(PB13,OUTPUT); //Controle do enable da fonte regulada
-  digitalWrite(PB13, HIGH); //ativa a energia do LoRa
+  //Enable the LoRa power supply
+  pinMode(PB13,OUTPUT); 
+  digitalWrite(PB13, HIGH); 
   
-  delay(500); //Enable do MP2307 no MINI360 precisa de 16ms para ativar a Vout
+  delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
 
-  LowPower.begin(); //deep sleep para o STM32
+  LowPower.begin(); //STM32 deep sleep
 
   #ifdef enableRTCstm32
     setupRTC();
@@ -606,8 +662,8 @@ void setup() {
     //setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
   #endif
 
-  setupUltrasom();
-  startLoRA();
+  ultrasonic_setup();
+  start_LoRa();
   
   //readTimeTinyRTC();
 }
@@ -616,7 +672,7 @@ void loop() {
   readUltrasom();
   sendReadings();
 
-  if (runClockEvery(1000 * 10)) { //aqui diz qto tempo fica ativo??
+  if (runClockEvery(1000 * 10)) { //aqui diz qto tempo fica ativo?? 10s
     vaiDormir_flag = 2; //Flag que sinaliza que tem que hibernar POR 1MIN
     enableBackupDomain();
     setBackupRegister(2, 10); //indica que irá hibernar
