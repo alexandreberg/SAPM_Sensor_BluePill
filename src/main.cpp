@@ -36,7 +36,7 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   * 
   * 23.11.2024  - Alterando o código para ler e hibernar por 1 minuto entre leituras so ultrasom.
   *             - 1min on e 1min off, ajustar para não ficar tanto tempo on e desligar assim que transmitir
-  * 24.11.2024  - alteramdo a função readUltrasom() para trabalhar com a mediana
+  * 24.11.2024  - alteramdo a função readUltrasonic() para trabalhar com a mediana
   * 
   * 24.12.2024  - Limpando e organizando o arquivo
   * 
@@ -133,12 +133,12 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   const unsigned int echoPin = PA2; 
   long lastEchoDistance = 0;          // we want to keep these values after reset
   unsigned long pulseLength = 0;
-  unsigned long distanciaLida = 0;
-  unsigned long qtdMaxLeituras = 0;
+  unsigned long readingDistance = 0;
+  unsigned long maxReadingNumber = 0; //Number or ultrasonic readings to do the calculation of mean and average
   boolean ultrasonicActive  = true;
 #endif //enableUltrasonic
 
-int vaiDormir_flag = 0;         //flag to ender in deep sleep
+int goToSleep_flag = 0;         //flag to ender in deep sleep
 
 #ifdef enableLoRa
   //define the pins used by the LoRa transceiver module
@@ -148,18 +148,18 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
   #define SS PA4
   #define RST PA0
   #define DIO0 PA1
-  const int csPin = PA4;          // LoRa radio chip select
-  const int resetPin = PA0;        // LoRa radio reset
-  const int irqPin = PA1;          // change for your board; must be a hardware interrupt pin
+  const int csPin = PA4;            //LoRa radio chip select
+  const int resetPin = PA0;         //LoRa radio reset
+  const int irqPin = PA1;           //change for your board; must be a hardware interrupt pin
 
-  #define BAND 915E6  /*  Brasil : 902-928 MHz
+  #define BAND 915E6  /*  Brazil : 902-928 MHz
                           433E6 for Asia
                           866E6 for Europe
                           915E6 for North America */
 
 
   //packet counter
-  /////int readingID = 0; //passando para a memoria RTC (ver em qual sketch foi feito)
+  /////int readingID = 0; //TODO: passando para a memoria RTC (ver em qual sketch foi feito)
   int counter = 0;
   long readingID = 0;
   
@@ -167,9 +167,10 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
-void readUltrasom();
-float calcularMediana(int *array, int tamanho);
-int comparar(const void *a, const void *b);
+//REVISADO
+void readUltrasonic();
+float calculateMedian(int *array, int arraySize);
+int compareReadings(const void *a, const void *b);
 
 #ifdef enableTinyRTC
   //void startTinyRTC();
@@ -185,9 +186,9 @@ int comparar(const void *a, const void *b);
 
 #ifdef enableUltrasonic
   void ultrasonic_setup();
-  void readUltrasom();
-  float calcularMediana(int *array, int tamanho);
-  int comparar(const void *a, const void *b);
+  void readUltrasonic();
+  float calculateMedian(int *array, int arraySize);
+  int compareReadings(const void *a, const void *b);
 #endif //enableUltrasonic
 
 #ifdef enableLoRa
@@ -203,7 +204,7 @@ int comparar(const void *a, const void *b);
   void sendReadings();
 #endif //enableLoRa
 
-void vaiDormir();
+void goToSleep();
 void sketchSetup();
 
 
@@ -221,8 +222,8 @@ void setup() {
       delay(100);
       setupRTC();
       LowPower.begin();
-      vaiDormir_flag = 2; //flag de hibernação 1min
-      vaiDormir();    
+      goToSleep_flag = 2; //flag de hibernação 1min
+      goToSleep();    
     }
 
     if (getBackupRegister(3) != 0 ) { //indica que tem que entrar em deep sleep
@@ -232,8 +233,8 @@ void setup() {
       setBackupRegister(3, 0);
       delay(100);
       LowPower.begin();
-      vaiDormir_flag = 1; //flag de deep sleep normal
-      vaiDormir();
+      goToSleep_flag = 1; //flag de deep sleep normal
+      goToSleep();
     }
     disableBackupDomain();
     IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
@@ -266,16 +267,16 @@ void setup() {
 
 /*********************************************** loop () ***********************************************/
 void loop() {
-  readUltrasom();
+  readUltrasonic();
   sendReadings();
 
   if (runClockEvery(1000 * 10)) { //aqui diz qto tempo fica ativo?? 10s
-    vaiDormir_flag = 2; //Flag que sinaliza que tem que hibernar POR 1MIN
+    goToSleep_flag = 2; //Flag que sinaliza que tem que hibernar POR 1MIN
     enableBackupDomain();
     setBackupRegister(2, 10); //indica que irá hibernar
     disableBackupDomain();
   }
-  vaiDormir();
+  goToSleep();
   //checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
   // delay(60000); //faz uma leitura por minuto
   #ifdef enableWatchDog
@@ -390,7 +391,7 @@ void setupRTC(){
     #endif
   } //end ultrasonic_setup
 
-//   void readUltrasom() { //Meu código original
+//   void readUltrasonic() { //Meu código original
 //     // ===== Sensor Ultrasonic =====
 
 //     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
@@ -401,22 +402,22 @@ void setupRTC(){
 //             digitalWrite(triggerPin, HIGH);                   // send high to trigger device
 //             delayMicroseconds(10);                         // let it settle
 //             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
-//             distanciaLida = pulseLength / 58;             // calculate distance (cm)
-//             Serial.print("distanciaLida: "); Serial.println(distanciaLida);
+//             readingDistance = pulseLength / 58;             // calculate distance (cm)
+//             Serial.print("readingDistance: "); Serial.println(readingDistance);
 //             delay(50);
 
-//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por qtdMaxLeituras para evitar loop infinito
-//             if (distanciaLida > 500 and qtdMaxLeituras < 200){ //descarta leituras maiores que 500cm
-//               qtdMaxLeituras = qtdMaxLeituras + 1;
+//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por maxReadingNumber para evitar loop infinito
+//             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta leituras maiores que 500cm
+//               maxReadingNumber = maxReadingNumber + 1;
 //               goto checadistancia;
-//             }//if distanciaLida
+//             }//if readingDistance
 //         } //for
 
-//         if ((distanciaLida - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
-//             lastEchoDistance = distanciaLida;
+//         if ((readingDistance - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
+//             lastEchoDistance = readingDistance;
 //             //#ifdef enableSerialLog
 //               Serial.print("Distancia Lida pelo Sensor Ultrasonico: ");
-//               Serial.print(distanciaLida); Serial.println("cm");
+//               Serial.print(readingDistance); Serial.println("cm");
 //               Serial.println("");
 //             //#endif
 //             delay(50);
@@ -425,7 +426,7 @@ void setupRTC(){
 //       }
 
 // Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
-void readUltrasom() {
+void readUltrasonic() {
   int leituras[11]; //11 leituras
   int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
   Serial.println("tamanhoArray = " + String(tamanhoArray) );
@@ -438,21 +439,21 @@ void readUltrasom() {
       digitalWrite(triggerPin, HIGH);
       delayMicroseconds(10);
       pulseLength = pulseIn(echoPin, HIGH);
-      distanciaLida = pulseLength / 58;
+      readingDistance = pulseLength / 58;
       delay(50);
 
-      if (distanciaLida > 500 || distanciaLida < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
-        // qtdMaxLeituras = qtdMaxLeituras + 1;
+      if (readingDistance > 500 || readingDistance < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
+        // maxReadingNumber = maxReadingNumber + 1;
         goto checadistancia;
       }
     // } //for2
-    leituras[i] = distanciaLida;
+    leituras[i] = readingDistance;
     // Serial.println("leituras-" + String(i) + " = " + String(leituras[i]) );
   } //for1
 
 
   // Calcula a mediana
-  float mediana = calcularMediana(leituras, tamanhoArray);
+  float mediana = calculateMedian(leituras, tamanhoArray);
 
   // Verifica se a mediana mudou significativamente
   // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
@@ -468,46 +469,46 @@ void readUltrasom() {
 }
 
 // // Função para calcular a mediana
-// float calcularMediana(int *array, int tamanho) {
-//   qsort(array, tamanho, sizeof(int), comparar);
+// float calculateMedian(int *array, int arraySize) {
+//   qsort(array, arraySize, sizeof(int), compareReadings);
 
-//   if (tamanho % 2 == 0) {
-//     return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+//   if (arraySize % 2 == 0) {
+//     return (float)(array[arraySize / 2 - 1] + array[arraySize / 2]) / 2;
 //   } else {
-//     return (float)array[tamanho / 2];
+//     return (float)array[arraySize / 2];
     
 //   }
 // }
 
-// int comparar(const void *a, const void *b) {
+// int compareReadings(const void *a, const void *b) {
 //   return (*(int *)a - *(int *)b);
 // }
 // Função para calcular a mediana
-float calcularMediana(int *array, int tamanho) {
-  qsort(array, tamanho, sizeof(int), comparar);
+float calculateMedian(int *array, int arraySize) {
+  qsort(array, arraySize, sizeof(int), compareReadings);
 
   // Imprime os valores ordenados
   Serial.println("Valores ordenados: ");
-  for (int i = 0; i < tamanho; i++) {
+  for (int i = 0; i < arraySize; i++) {
     Serial.println(array[i]);
   }
   Serial.println("\n");
 
-  if (tamanho % 2 == 0) {
-    return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+  if (arraySize % 2 == 0) {
+    return (float)(array[arraySize / 2 - 1] + array[arraySize / 2]) / 2;
   } else {
-    return (float)array[tamanho / 2];
+    return (float)array[arraySize / 2];
   }
 }
 
-int comparar(const void *a, const void *b) {
+int compareReadings(const void *a, const void *b) {
   return (*(int *)a - *(int *)b);
 }
 #endif //enableUltrasonic
 
-//////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
- void vaiDormir() {
-    if (vaiDormir_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
+//////////////////////////////////////////////////// goToSleep() //////////////////////////////////////////////////// 
+ void goToSleep() {
+    if (goToSleep_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
@@ -518,7 +519,7 @@ int comparar(const void *a, const void *b) {
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
     }
     //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
-    if (vaiDormir_flag == 1) {
+    if (goToSleep_flag == 1) {
     //   //DateTime now = rtc.now();
     //   //int sleepTime = 59 - now.minute(); //TinyRTC
       #ifdef enableWatchDog
@@ -640,7 +641,7 @@ void onReceive(int packetSize) {
     //   month = mes01.toInt();
     //   year = ano01.toInt();
     //   rtc.setDate(weekDay, day, month, year);
-    //   vaiDormir_flag = 1;
+    //   goToSleep_flag = 1;
     //   readTime();
 
     //   enableBackupDomain();
@@ -752,7 +753,7 @@ boolean runClockEvery(unsigned long interval)
 
   void sendReadings() {
     if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
-      LoRaMessage = String(ID) + "/" + String(distanciaLida) + "&" + String(distanciaLida);
+      LoRaMessage = String(ID) + "/" + String(readingDistance) + "&" + String(readingDistance);
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
       #ifdef enableSerialLog
