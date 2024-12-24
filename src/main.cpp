@@ -47,21 +47,23 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
 #include <stdlib.h>
 
 //Identificação para o gateway saber quem está enviando os dados
-#define ID "Sensor_BluePill-01" //<=== MUDAR AQUI ====
+//#define ID "Sensor_BluePill-01" //<=== MUDAR AQUI ====
+#define ID "Sensor_01"          //<=== MUDAR AQUI ====
 
-#define enableSerialLog //Enable Serial debug
-#define enableWatchDog //desativado o watchdog
+#define enableSerialLog         //Enable Serial debug
+#define enableWatchDog          //desativado o watchdog
+
 #include <Arduino.h>
-#include <STM32LowPower.h> //Deep Sleep
-int vaiDormir_flag = 0;
-#define enableRTCstm32 //STM32 internal RTC
+#include <STM32LowPower.h>      //Deep Sleep for STM32
+int vaiDormir_flag = 0;         //flag to ender in deep sleep
+#define enableRTCstm32          //using STM32 internal RTC
 #ifdef enableRTCstm32
   #include <STM32RTC.h>
 #endif
-//#define enableTinyRTC //não usado pois está bugado
+//#define enableTinyRTC         //TODO: not used because de SPI buz freezes and lose the connection 
 
 #ifdef enableWatchDog
-  #include <IWatchdog.h>
+  #include <IWatchdog.h>        //Enable watchdog for deep sleep mode
   const int ledPin = PB13;
 #endif
 #ifdef enableTinyRTC
@@ -81,72 +83,17 @@ int vaiDormir_flag = 0;
   RTC_DS1307 rtc;
 
   char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+#endif //enableTinyRTC
 
-  void startTinyRTC() {
-    while (!Serial); // wait for serial port to connect. Needed for native USB
-
-    if (! rtc.begin()) {
-      Serial.println("Couldn't find RTC");
-      Serial.flush();
-      //abort();
-    }
-
-    if (! rtc.isrunning()) {
-      Serial.println("RTC is NOT running, let's set the time!");
-      // When time needs to be set on a new device, or after a power loss, the
-      // following line sets the RTC to the date & time this sketch was compiled
-      ////rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-      // This line sets the RTC with an explicit date & time, for example to set
-      // January 21, 2014 at 3am you would call:
-      // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-    }
-
-    // When time needs to be re-set on a previously configured device, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  }
-
-  void setTime(){
-      // Set the time
-      //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-      rtc.adjust(DateTime(year - 2000, month, day, hours, minutes, seconds));
-  }
-  void readTimeTinyRTC() {
-      DateTime now = rtc.now();
-      char DATE_FULL_RTC[] = "DD/MM/YYYY, hh:mm:ss";
-      /*
-      Serial.print(now.year(), DEC);
-      Serial.print('/');
-      Serial.print(now.month(), DEC);
-      Serial.print('/');
-      Serial.print(now.day(), DEC);
-      Serial.print(" (");
-      Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-      Serial.print(") ");
-      Serial.print(now.hour(), DEC);
-      Serial.print(':');
-      Serial.print(now.minute(), DEC);
-      Serial.print(':');
-      Serial.print(now.second(), DEC);
-      Serial.println();
-      */
-      Serial.print("Data e hora atual: "); Serial.println(now.toString(DATE_FULL_RTC));
-      //Prepara para atualizar o grafico a cada 30minutos
-      /*if (now.minute() == 30 or now.minute() == 0) {
-        //Serial.println(rtc.getHours());
-        //Serial.println(rtc.getMinutes());
-        Serial.println("Time of Transmission to Server");
-      }*/
-  }
-#endif
-
-//Protótipos das funções
+/*********************************************** Function Prototypes ***********************************************/
 void readUltrasom();
 float calcularMediana(int *array, int tamanho);
 int comparar(const void *a, const void *b);
+//void startTinyRTC();
+//void setTime();
+//void readTimeTinyRTC();
+
+/*********************************************** End Function Prototypes *******************************************/
 
 #ifdef enableRTCstm32
   boolean onReceive_flag = 0;
@@ -254,11 +201,11 @@ int comparar(const void *a, const void *b);
 
 // Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
 void readUltrasom() {
-  int leituras[10];
+  int leituras[11]; //11 leituras
   int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
-
-  // Faz 10 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
-  for (int i = 0; i < tamanhoArray; i++) { //for1
+  Serial.println("tamanhoArray = " + String(tamanhoArray) );
+  // Faz 11 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
+  for (int i = 0; i <= tamanhoArray; i++) { //for1
     checadistancia: // Label para goto
     // for (int j = 0; j < 3; j++) { //for2
       digitalWrite(trigPin, LOW);
@@ -275,27 +222,50 @@ void readUltrasom() {
       }
     // } //for2
     leituras[i] = distanciaLida;
+    // Serial.println("leituras-" + String(i) + " = " + String(leituras[i]) );
   } //for1
 
   // Calcula a mediana
   float mediana = calcularMediana(leituras, tamanhoArray);
 
   // Verifica se a mediana mudou significativamente
-  if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
-    lastEchoDistance = mediana;
+  // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
+    // lastEchoDistance = mediana;
 
     Serial.print("Distancia Lida pelo Sensor Ultrasonico (mediana): ");
     Serial.print(mediana); 
     Serial.println("cm");
     Serial.println("");
-  }
+  // }
 
   delay(50); //para economizar bateria, pode-se reduzir esse tempo
 }
 
+// // Função para calcular a mediana
+// float calcularMediana(int *array, int tamanho) {
+//   qsort(array, tamanho, sizeof(int), comparar);
+
+//   if (tamanho % 2 == 0) {
+//     return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+//   } else {
+//     return (float)array[tamanho / 2];
+    
+//   }
+// }
+
+// int comparar(const void *a, const void *b) {
+//   return (*(int *)a - *(int *)b);
+// }
 // Função para calcular a mediana
 float calcularMediana(int *array, int tamanho) {
   qsort(array, tamanho, sizeof(int), comparar);
+
+  // Imprime os valores ordenados
+  Serial.println("Valores ordenados: ");
+  for (int i = 0; i < tamanho; i++) {
+    Serial.println(array[i]);
+  }
+  Serial.println("\n");
 
   if (tamanho % 2 == 0) {
     return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
@@ -307,7 +277,6 @@ float calcularMediana(int *array, int tamanho) {
 int comparar(const void *a, const void *b) {
   return (*(int *)a - *(int *)b);
 }
-
 #endif //enableUltraSom
 
 //////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
@@ -609,7 +578,7 @@ void sketchSetup() {
     // Serial.println("\n(48) 99852-6523");
     // Serial.println("\nwww.ilha3d.com");
     // Serial.println("\n");
-    Serial.println("System Version: SAPM_Sensor_BluePill_20241123-01 - mediana");
+    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-01 - mediana");
     Serial.println("");
 }
 
@@ -668,6 +637,7 @@ void setup() {
   //readTimeTinyRTC();
 }
 
+/*********************************************** loop () ***********************************************/
 void loop() {
   readUltrasom();
   sendReadings();
@@ -685,3 +655,70 @@ void loop() {
     IWatchdog.reload();
   #endif
 }
+
+/*********************************************** End loop () ***********************************************/
+
+/*********************************************** Function Definitions ***********************************************/
+#ifdef enableTinyRTC
+void startTinyRTC() {
+    while (!Serial); // wait for serial port to connect. Needed for native USB
+
+    if (! rtc.begin()) {
+      Serial.println("Couldn't find RTC");
+      Serial.flush();
+      //abort();
+    }
+
+    if (! rtc.isrunning()) {
+      Serial.println("RTC is NOT running, let's set the time!");
+      // When time needs to be set on a new device, or after a power loss, the
+      // following line sets the RTC to the date & time this sketch was compiled
+      ////rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+      // This line sets the RTC with an explicit date & time, for example to set
+      // January 21, 2014 at 3am you would call:
+      // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    }
+
+    // When time needs to be re-set on a previously configured device, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+
+  void setTime(){
+      // Set the time
+      //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+      rtc.adjust(DateTime(year - 2000, month, day, hours, minutes, seconds));
+  }
+  void readTimeTinyRTC() {
+      DateTime now = rtc.now();
+      char DATE_FULL_RTC[] = "DD/MM/YYYY, hh:mm:ss";
+      /*
+      Serial.print(now.year(), DEC);
+      Serial.print('/');
+      Serial.print(now.month(), DEC);
+      Serial.print('/');
+      Serial.print(now.day(), DEC);
+      Serial.print(" (");
+      Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+      Serial.print(") ");
+      Serial.print(now.hour(), DEC);
+      Serial.print(':');
+      Serial.print(now.minute(), DEC);
+      Serial.print(':');
+      Serial.print(now.second(), DEC);
+      Serial.println();
+      */
+      Serial.print("Data e hora atual: "); Serial.println(now.toString(DATE_FULL_RTC));
+      //Prepara para atualizar o grafico a cada 30minutos
+      /*if (now.minute() == 30 or now.minute() == 0) {
+        //Serial.println(rtc.getHours());
+        //Serial.println(rtc.getMinutes());
+        Serial.println("Time of Transmission to Server");
+      }*/
+  }
+#endif //enableTinyRTC
+/*********************************************** End Function Definitions ********************************************/
+
