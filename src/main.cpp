@@ -85,16 +85,6 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
   char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 #endif //enableTinyRTC
 
-/*********************************************** Function Prototypes ***********************************************/
-void readUltrasom();
-float calcularMediana(int *array, int tamanho);
-int comparar(const void *a, const void *b);
-//void startTinyRTC();
-//void setTime();
-//void readTimeTinyRTC();
-
-/*********************************************** End Function Prototypes *******************************************/
-
 #ifdef enableRTCstm32
   boolean onReceive_flag = 0;
   /* Get the rtc object */
@@ -110,37 +100,28 @@ int comparar(const void *a, const void *b);
    byte day = 0;
    byte month = 0;
    byte year = 0;
+  
+#endif //enableRTCstm32
 
-  void setupRTC(){
-      // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
-      // By default the LSI is selected as source.
-      //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
-      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 ligado com diodo no VBAT
-      rtc.begin(); // initialize RTC 24H format
-  }  
+/*********************************************** Function Prototypes ***********************************************/
+void readUltrasom();
+float calcularMediana(int *array, int tamanho);
+int comparar(const void *a, const void *b);
 
-  void setTime(){
-      // Set the time
-      rtc.setHours(hours);
-      rtc.setMinutes(minutes);
-      rtc.setSeconds(seconds);
+#ifdef enableTinyRTC
+  //void startTinyRTC();
+  //void setTime();
+  //void readTimeTinyRTC();
+#endif //enableTinyRTC
 
-      // Set the date
-      rtc.setWeekDay(weekDay);
-      rtc.setDay(day);
-      rtc.setMonth(month);
-      rtc.setYear(year);
-  }
+#ifdef enableRTCstm32
+  void setupRTC();
+  void setTime();
+  void readTime();
+#endif //enableRTCstm32
 
-  void readTime(){
-    // Print date...
-    Serial.println("Data e hora armazenada no RTC Local");
-    Serial.printf("%02d/%02d/%02d ", rtc.getDay(), rtc.getMonth(), rtc.getYear());
 
-   // ...and time
-   Serial.printf("%02d:%02d:%02d.%03d\n", rtc.getHours(), rtc.getMinutes(), rtc.getSeconds(), rtc.getSubSeconds());
-  }
-#endif
+/*********************************************** End Function Prototypes *******************************************/
 
 #define enableUltraSom
 #ifdef enableUltraSom
@@ -720,5 +701,37 @@ void startTinyRTC() {
       }*/
   }
 #endif //enableTinyRTC
+
+#ifdef enableRTCstm32
+void setupRTC(){
+      // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
+      // By default the LSI is selected as source.
+      //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
+      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 ligado com diodo no VBAT
+      rtc.begin(); // initialize RTC 24H format
+  }  
+
+  void setTime(){
+      // Set the time
+      rtc.setHours(hours);
+      rtc.setMinutes(minutes);
+      rtc.setSeconds(seconds);
+
+      // Set the date
+      rtc.setWeekDay(weekDay);
+      rtc.setDay(day);
+      rtc.setMonth(month);
+      rtc.setYear(year);
+  }
+
+  void readTime(){
+    // Print date...
+    Serial.println("Data e hora armazenada no RTC Local");
+    Serial.printf("%02d/%02d/%02d ", rtc.getDay(), rtc.getMonth(), rtc.getYear());
+
+   // ...and time
+   Serial.printf("%02d:%02d:%02d.%03d\n", rtc.getHours(), rtc.getMinutes(), rtc.getSeconds(), rtc.getSubSeconds());
+  }
+#endif //enableRTCstm32
 /*********************************************** End Function Definitions ********************************************/
 
