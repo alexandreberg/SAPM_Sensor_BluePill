@@ -49,17 +49,19 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
 
 
 /*********************************************** Macro Definitions ***********************************************/
-//Identificação para o gateway saber quem está enviando os dados
-#define ID "Sensor_01"          //<=== MUDAR AQUI ====
+//REVISADO
+#define ID "Sensor_01"          //<<=== Sensor identification ==>> CHANGE HERE!!
 
-#define enableSerialLog         //Enable Serial debug
-#define enableWatchDog          //desativado o watchdog
-#define enableUltraSom          //Enable Ultrasonic Sensor
-#define enableRTCstm32          //using STM32 internal RTC
-//#define enableTinyRTC         //TODO: not used because de SPI buz freezes and lose the connection 
+//Enable or disable services and periferals
+#define enableSerialLog         //enable Serial debug on console
+#define enableWatchDog          //enable watchdog for deepsleep
+#define enableUltrasonic        //enable Ultrasonic Sensor
+#define enableRTCstm32          //using STM32 internal RTC Clock
+//#define enableTinyRTC         //TODO: not used because de SPI bus freezes and loose the connection!
 #define enableLoRa              //enable LoRa communication
 
 /*********************************************** Library Definitions ***********************************************/
+//REVISADO
 #include <Arduino.h>
 #include <stdlib.h>
 #include <STM32LowPower.h>      //Deep Sleep for STM32
@@ -74,60 +76,26 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
 
 #ifdef enableTinyRTC
   #include "RTClib.h"           //Date and time functions using a DS1307 RTC connected via I2C and Wire lib
-#endif //enableTinyRTC
+#endif
 
-int vaiDormir_flag = 0;         //flag to ender in deep sleep
 
-#ifdef enableUltraSom
+#ifdef enableUltrasonic
   #include <NewPing.h>
-  const unsigned int trigPin = PA3; 
-  const unsigned int echoPin = PA2; 
-  long lastEchoDistance = 0;          // we want to keep these values after reset
-  unsigned long pulseLength = 0;
-  unsigned long distanciaLida = 0;
-  unsigned long qtdMaxLeituras = 0;
-  boolean ultrasonicActive  = true;
-#endif //enableUltraSom
+#endif
 
 #ifdef enableLoRa
-//Libraries for LoRa
   #include <SPI.h>
   #include <LoRa.h>
-  //#include <LoRa_stm32.h> //lib alterada para o stm32
-#endif //enableLoRa
-
-#ifdef enableLoRa
-  //define the pins used by the LoRa transceiver module
-  #define SCK PA5
-  #define MISO PA6
-  #define MOSI PA7
-  #define SS PA4
-  #define RST PA0
-  #define DIO0 PA1
-  const int csPin = PA4;          // LoRa radio chip select
-  const int resetPin = PA0;        // LoRa radio reset
-  const int irqPin = PA1;          // change for your board; must be a hardware interrupt pin
-
-  //433E6 for Asia
-  //866E6 for Europe
-  //915E6 for North America
-  #define BAND 915E6  //Brasil : 902-928 MHz
-
-  //packet counter
-  /////int readingID = 0; //passando para a memoria RTC (ver em qual sketch foi feito)
-  int counter = 0;
-  long readingID = 0;
-  
-  String LoRaMessage = "";
-#endif  //enableLoRa
+#endif
 
 /*********************************************** Global Variables ***********************************************/
+//REVISADO
 #ifdef enableWatchDog
   const int ledPin = PB13;
 #endif
 
 #ifdef enableTinyRTC
-  //Armazenamento da data e hora
+  //Store date and time
   int   year    = 0;
   int   month   = 0;
   int   day     = 0;
@@ -160,6 +128,44 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
   
 #endif //enableRTCstm32
 
+#ifdef enableUltrasonic
+  const unsigned int triggerPin = PA3; 
+  const unsigned int echoPin = PA2; 
+  long lastEchoDistance = 0;          // we want to keep these values after reset
+  unsigned long pulseLength = 0;
+  unsigned long distanciaLida = 0;
+  unsigned long qtdMaxLeituras = 0;
+  boolean ultrasonicActive  = true;
+#endif //enableUltrasonic
+
+int vaiDormir_flag = 0;         //flag to ender in deep sleep
+
+#ifdef enableLoRa
+  //define the pins used by the LoRa transceiver module
+  #define SCK PA5
+  #define MISO PA6
+  #define MOSI PA7
+  #define SS PA4
+  #define RST PA0
+  #define DIO0 PA1
+  const int csPin = PA4;          // LoRa radio chip select
+  const int resetPin = PA0;        // LoRa radio reset
+  const int irqPin = PA1;          // change for your board; must be a hardware interrupt pin
+
+  #define BAND 915E6  /*  Brasil : 902-928 MHz
+                          433E6 for Asia
+                          866E6 for Europe
+                          915E6 for North America */
+
+
+  //packet counter
+  /////int readingID = 0; //passando para a memoria RTC (ver em qual sketch foi feito)
+  int counter = 0;
+  long readingID = 0;
+  
+  String LoRaMessage = "";
+#endif  //enableLoRa
+
 /*********************************************** Function Prototypes ***********************************************/
 void readUltrasom();
 float calcularMediana(int *array, int tamanho);
@@ -177,12 +183,12 @@ int comparar(const void *a, const void *b);
   void readTime();
 #endif //enableRTCstm32
 
-#ifdef enableUltraSom
+#ifdef enableUltrasonic
   void ultrasonic_setup();
   void readUltrasom();
   float calcularMediana(int *array, int tamanho);
   int comparar(const void *a, const void *b);
-#endif //enableUltraSom
+#endif //enableUltrasonic
 
 #ifdef enableLoRa
   void LoRa_rxMode();
@@ -198,25 +204,10 @@ int comparar(const void *a, const void *b);
 #endif //enableLoRa
 
 void vaiDormir();
+void sketchSetup();
+
 
 /*********************************************** End Function Prototypes *******************************************/
-
-
-
-
-
-//////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
-// Mostra dados do sketch e configura a serial
-void sketchSetup() {
-  Serial.begin(115200); 
-  Serial.print("\nIniciando Sensor "); Serial.println(String(ID)); 
-    // Serial.println("\nIlha 3d");
-    // Serial.println("\n(48) 99852-6523");
-    // Serial.println("\nwww.ilha3d.com");
-    // Serial.println("\n");
-    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-02 - mediana");
-    Serial.println("");
-}
 
 void setup() {
   sketchSetup();
@@ -389,10 +380,10 @@ void setupRTC(){
   }
 #endif //enableRTCstm32
 
-#ifdef enableUltraSom
+#ifdef enableUltrasonic
   // Ultrasonic Distance Sensor setup
   void ultrasonic_setup(){
-    pinMode(trigPin, OUTPUT);
+    pinMode(triggerPin, OUTPUT);
     pinMode(echoPin, INPUT);  
     #ifdef enableSerialLog
       Serial.println("Setting up Ultrasonic Sensor.");
@@ -405,9 +396,9 @@ void setupRTC(){
 //     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
 //         checadistancia: //Label para goto
 //         for (int i=0  ; i < 3; i++) {
-//             digitalWrite(trigPin, LOW);                    // send low to get a clean pulse     
+//             digitalWrite(triggerPin, LOW);                    // send low to get a clean pulse     
 //             delayMicroseconds(5);                          // let it settle
-//             digitalWrite(trigPin, HIGH);                   // send high to trigger device
+//             digitalWrite(triggerPin, HIGH);                   // send high to trigger device
 //             delayMicroseconds(10);                         // let it settle
 //             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
 //             distanciaLida = pulseLength / 58;             // calculate distance (cm)
@@ -442,9 +433,9 @@ void readUltrasom() {
   for (int i = 0; i <= tamanhoArray; i++) { //for1
     checadistancia: // Label para goto
     // for (int j = 0; j < 3; j++) { //for2
-      digitalWrite(trigPin, LOW);
+      digitalWrite(triggerPin, LOW);
       delayMicroseconds(5);
-      digitalWrite(trigPin, HIGH);
+      digitalWrite(triggerPin, HIGH);
       delayMicroseconds(10);
       pulseLength = pulseIn(echoPin, HIGH);
       distanciaLida = pulseLength / 58;
@@ -512,7 +503,7 @@ float calcularMediana(int *array, int tamanho) {
 int comparar(const void *a, const void *b) {
   return (*(int *)a - *(int *)b);
 }
-#endif //enableUltraSom
+#endif //enableUltrasonic
 
 //////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
  void vaiDormir() {
@@ -773,4 +764,17 @@ boolean runClockEvery(unsigned long interval)
   }
 
 #endif //enableLoRa
+
+//////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
+// Mostra dados do sketch e configura a serial
+void sketchSetup() {
+  Serial.begin(115200); 
+  Serial.print("\nIniciando Sensor "); Serial.println(String(ID)); 
+    // Serial.println("\nIlha 3d");
+    // Serial.println("\n(48) 99852-6523");
+    // Serial.println("\nwww.ilha3d.com");
+    // Serial.println("\n");
+    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-03 - mediana");
+    Serial.println("");
+}
 /*********************************************** End Function Definitions ********************************************/
