@@ -146,56 +146,11 @@ int comparar(const void *a, const void *b);
   int comparar(const void *a, const void *b);
 #endif //enableUltraSom
 
+void vaiDormir();
 
 /*********************************************** End Function Prototypes *******************************************/
 
 
-//////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
- void vaiDormir() {
-    if (vaiDormir_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
-      #ifdef enableWatchDog
-        IWatchdog.reload();
-      #endif
-      // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
-      Serial.println("Hibernando por 1 minuto..."); 
-      delay (10);
-      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
-      LowPower.shutdown(1000 * 60); //hiberna por 1 min
-    }
-    //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
-    if (vaiDormir_flag == 1) {
-    //   //DateTime now = rtc.now();
-    //   //int sleepTime = 59 - now.minute(); //TinyRTC
-      #ifdef enableWatchDog
-        IWatchdog.reload();
-      #endif
-      Serial.println("Hibernando por 1 minuto..."); 
-      delay (10);
-      LowPower.shutdown(1000 * 60); //hiberna por 1 min
-    //   int sleepTime = 59 - rtc.getMinutes(); //STM32RTC
-
-    //   if ( sleepTime <= 30) {
-    //     //#ifdef enableSerialLog
-    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
-    //       delay (100);
-    //     //#endif
-    //     //vai dormir...
-    //     LowPower.shutdown(1000 * 60 * sleepTime); //D.S por 1000ms* 60s * sleepTime/
-    //   }
-
-    //   else  {
-    //     sleepTime = sleepTime -30;
-    //     //#ifdef enableSerialLog
-    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
-    //       delay (100);
-    //     //#endif
-    //     //vai dormir...
-    //     LowPower.shutdown(1000 * 60 *sleepTime); //D.S por 1000ms* 60s * sleepTime/
-    //   }
-
-    }
- 
- }
 
 #define enableLoRa
 #ifdef enableLoRa
@@ -749,5 +704,51 @@ int comparar(const void *a, const void *b) {
 }
 #endif //enableUltraSom
 
-/*********************************************** End Function Definitions ********************************************/
+//////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
+ void vaiDormir() {
+    if (vaiDormir_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
+      #ifdef enableWatchDog
+        IWatchdog.reload();
+      #endif
+      // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
+      Serial.println("Hibernando por 1 minuto..."); 
+      delay (10);
+      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
+      LowPower.shutdown(1000 * 60); //hiberna por 1 min
+    }
+    //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
+    if (vaiDormir_flag == 1) {
+    //   //DateTime now = rtc.now();
+    //   //int sleepTime = 59 - now.minute(); //TinyRTC
+      #ifdef enableWatchDog
+        IWatchdog.reload();
+      #endif
+      Serial.println("Hibernando por 1 minuto..."); 
+      delay (10);
+      LowPower.shutdown(1000 * 60); //hiberna por 1 min
+    //   int sleepTime = 59 - rtc.getMinutes(); //STM32RTC
 
+    //   if ( sleepTime <= 30) {
+    //     //#ifdef enableSerialLog
+    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
+    //       delay (100);
+    //     //#endif
+    //     //vai dormir...
+    //     LowPower.shutdown(1000 * 60 * sleepTime); //D.S por 1000ms* 60s * sleepTime/
+    //   }
+
+    //   else  {
+    //     sleepTime = sleepTime -30;
+    //     //#ifdef enableSerialLog
+    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
+    //       delay (100);
+    //     //#endif
+    //     //vai dormir...
+    //     LowPower.shutdown(1000 * 60 *sleepTime); //D.S por 1000ms* 60s * sleepTime/
+    //   }
+
+    }
+ 
+ }
+
+/*********************************************** End Function Definitions ********************************************/
