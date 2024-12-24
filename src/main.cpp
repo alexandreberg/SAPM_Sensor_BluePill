@@ -34,7 +34,7 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   *  Estava hibernando por 24hs, corrigi. À principio resolveu e o Sensor-01 que está com essa versão, voltou a funcionar.
   *  O Sensor-02 está com outra versão: BPLTwR_04.10.2021-05-LSE
   * 
-  * 23.11.2024  - Alterando o código para ler e hibernar por 1 minuto entre leituras so ultrasom.
+  * 23.11.2024  - Alterando o código para ler e hibernar por 1 minuto entre readings so ultrasom.
   *             - 1min on e 1min off, ajustar para não ficar tanto tempo on e desligar assim que transmitir
   * 24.11.2024  - alteramdo a função readUltrasonic() para trabalhar com a mediana
   * 
@@ -214,26 +214,26 @@ void setup() {
   sketchSetup();
   pinMode(PC13, OUTPUT); // initialize digital pin PC13 (LED) as an output.
   
-  #ifdef enableWatchDog // caso não encontrar o gateway vai hibernar
+  #ifdef enableWatchDog // TODO: if the LoRa gateway is not founf go to deep sleep ==> é necessário?
     enableBackupDomain();
-    if ( getBackupRegister(2) != 0) { //indica que tem que entrar em deep sleep
+    if ( getBackupRegister(2) != 0) { //indicates that  have to go into deepsleep
       Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
       setBackupRegister(2, 0);
       delay(100);
       setupRTC();
       LowPower.begin();
-      goToSleep_flag = 2; //flag de hibernação 1min
+      goToSleep_flag = 2; //hibernation flag 1min
       goToSleep();    
     }
 
-    if (getBackupRegister(3) != 0 ) { //indica que tem que entrar em deep sleep
+    if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
       Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
       setupRTC();
       enableBackupDomain();
       setBackupRegister(3, 0);
       delay(100);
       LowPower.begin();
-      goToSleep_flag = 1; //flag de deep sleep normal
+      goToSleep_flag = 1; //hibernation flag normal deepsleep
       goToSleep();
     }
     disableBackupDomain();
@@ -270,10 +270,10 @@ void loop() {
   readUltrasonic();
   sendReadings();
 
-  if (runClockEvery(1000 * 10)) { //aqui diz qto tempo fica ativo?? 10s
-    goToSleep_flag = 2; //Flag que sinaliza que tem que hibernar POR 1MIN
+  if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
+    goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
     enableBackupDomain();
-    setBackupRegister(2, 10); //indica que irá hibernar
+    setBackupRegister(2, 10); 
     disableBackupDomain();
   }
   goToSleep();
@@ -407,7 +407,7 @@ void setupRTC(){
 //             delay(50);
 
 //             // Elimina picos de leitura erroneos do sensor mas só fica aqui por maxReadingNumber para evitar loop infinito
-//             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta leituras maiores que 500cm
+//             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta readings maiores que 500cm
 //               maxReadingNumber = maxReadingNumber + 1;
 //               goto checadistancia;
 //             }//if readingDistance
@@ -425,14 +425,14 @@ void setupRTC(){
 //       delay(500); 
 //       }
 
-// Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
+// Função adaptada para calcular a mediana de 10 readings do sensor ultrassônico e mostrá-las como distância lida
 void readUltrasonic() {
-  int leituras[11]; //11 leituras
-  int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
+  int readings[11]; //11 readings
+  int tamanhoArray = sizeof(readings) / sizeof(readings[0]); //TODO
   Serial.println("tamanhoArray = " + String(tamanhoArray) );
-  // Faz 11 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
+  //Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection
   for (int i = 0; i <= tamanhoArray; i++) { //for1
-    checadistancia: // Label para goto
+    checadistancia: // Label for goto
     // for (int j = 0; j < 3; j++) { //for2
       digitalWrite(triggerPin, LOW);
       delayMicroseconds(5);
@@ -442,18 +442,18 @@ void readUltrasonic() {
       readingDistance = pulseLength / 58;
       delay(50);
 
-      if (readingDistance > 500 || readingDistance < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
+      if (readingDistance > 500 || readingDistance < 0) { //eliminate erroneous readings above or below the sensor range
         // maxReadingNumber = maxReadingNumber + 1;
         goto checadistancia;
       }
     // } //for2
-    leituras[i] = readingDistance;
-    // Serial.println("leituras-" + String(i) + " = " + String(leituras[i]) );
+    readings[i] = readingDistance;
+    // Serial.println("readings-" + String(i) + " = " + String(readings[i]) );
   } //for1
 
 
   // Calcula a mediana
-  float mediana = calculateMedian(leituras, tamanhoArray);
+  float mediana = calculateMedian(readings, tamanhoArray);
 
   // Verifica se a mediana mudou significativamente
   // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
