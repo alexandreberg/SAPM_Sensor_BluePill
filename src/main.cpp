@@ -184,222 +184,26 @@ int comparar(const void *a, const void *b);
   int comparar(const void *a, const void *b);
 #endif //enableUltraSom
 
+#ifdef enableLoRa
+  void LoRa_rxMode();
+  void LoRa_txMode();
+  void onReceive(int packetSize);
+  void LoRa_sendMessage(String message);
+  void onTxDone();
+  boolean runEvery(unsigned long interval);
+  void checkonReceive();
+  boolean runClockEvery(unsigned long interval);
+  void start_LoRa();
+  void sendReadings();
+#endif //enableLoRa
+
 void vaiDormir();
 
 /*********************************************** End Function Prototypes *******************************************/
 
-#ifdef enableLoRa
-  void LoRa_rxMode(){
-    LoRa.enableInvertIQ();                // active invert I and Q signals
-    LoRa.receive();                       // set receive mode
-  }
 
-  void LoRa_txMode(){
-    LoRa.idle();                          // set standby mode
-    LoRa.disableInvertIQ();               // normal mode
-  }
 
-//==================================== Lora Callback void onReceive ===================================================
-void onReceive(int packetSize) {
-  onReceive_flag = 1;
-  #ifdef enableSerialLog
-    Serial.print("Pacote LoRa Recebido do Gateway: ");
-  #endif
-  
-  int rssi;
-  String dia01;
-  String mes01;
-  String ano01;
-  String hora01;
-  String minuto01;
-  String segundo01;
-  String dia02;
-  String mes02;
-  String ano02;
-  String hora02;
-  String minuto02;
-  String segundo02;
 
-	while (LoRa.available()) {
-		//Aqui eu faço ele entrar em deep sleep assim que receber a mensagem do Gateway
-    
-    String LoRaData = LoRa.readString();
-		// LoRaData format: dia/mes@ano_hora,minuto%segundo
-		// String example:2/2@21_20,57%27
-		Serial.print("LoRaData: "); Serial.println(LoRaData);
-    //recebimento da data01
-    int pos1 = LoRaData.indexOf('/');
-		int pos2 = LoRaData.indexOf('@');
-		int pos3 = LoRaData.indexOf('_');
-    int pos4 = LoRaData.indexOf(',');
-		int pos5 = LoRaData.indexOf('%');
-
-    //recebimento da data02
-    int pos6 = LoRaData.indexOf('|');
-		int pos7 = LoRaData.indexOf('?');
-		int pos8 = LoRaData.indexOf('#');
-    int pos9 = LoRaData.indexOf('$');
-		int pos10 = LoRaData.indexOf('!');   
-    int pos11 = LoRaData.indexOf('*');   
-
-    dia01 = LoRaData.substring(0, pos1);
-		mes01 = LoRaData.substring(pos1 +1, pos2);
-		ano01 = LoRaData.substring(pos2+1, pos3);
-    hora01 = LoRaData.substring(pos3+1, pos4);
-    minuto01 = LoRaData.substring(pos4+1, pos5);
-		segundo01 = LoRaData.substring(pos5+1, pos6);  
-
-		dia02 = LoRaData.substring(pos6 + 1, pos7);
-		mes02 = LoRaData.substring(pos7 +1, pos8);
-		ano02 = LoRaData.substring(pos8+1, pos9);
-    hora02 = LoRaData.substring(pos9+1, pos10);
-    minuto02 = LoRaData.substring(pos10+1, pos11);
-		segundo02 = LoRaData.substring(pos11+1, LoRaData.length());  
-
-    Serial.println("Data e hora recebidas do Gateway:");
-    Serial.print("Dia:"); Serial.println(dia01);
-    Serial.print("Mês:"); Serial.println(mes01);
-    Serial.print("Ano:"); Serial.println(ano01);
-    Serial.print("Hora:"); Serial.println(hora01);
-    Serial.print("Minuto:"); Serial.println(minuto01);
-    Serial.print("Segundo:"); Serial.println(segundo01);
-  
-    // //chega se a data não chegou com erro de transmissão
-    // if (dia01 == dia02 and mes01 == mes02 and ano01 == ano02 and hora01 == hora02 and minuto01 == minuto02 and segundo01 == segundo02 )
-    // {
-    //   hours = hora01.toInt();
-    //   minutes = minuto01.toInt();
-    //   seconds = segundo01.toInt();
-    //   rtc.setTime(hours, minutes, seconds);
-
-    //   day = dia01.toInt();
-    //   month = mes01.toInt();
-    //   year = ano01.toInt();
-    //   rtc.setDate(weekDay, day, month, year);
-    //   vaiDormir_flag = 1;
-    //   readTime();
-
-    //   enableBackupDomain();
-    //   setBackupRegister(3, 10); //indica que tem que entrar em deep sleep
-    //   disableBackupDomain();
-    // }
-      // Get RSSI
-      #ifdef enableSerialLog
-        //rssi = LoRa.packetRssi();
-        //Serial.print(" with RSSI ");    
-        //Serial.println(rssi);
-      #endif
-
-  }
-}
-  
-  void LoRa_sendMessage(String message) {
-    LoRa_txMode();                        // set tx mode
-    LoRa.beginPacket();                   // start packet
-    LoRa.print(message);                  // add payload
-    LoRa.endPacket(true);                 // finish packet and send it
-  }
-
-  void onTxDone() {
-    #ifdef enableSerialLog
-      Serial.println("TxDone");
-    #endif
-    LoRa_rxMode();
-  }
-
-  boolean runEvery(unsigned long interval)
-  {
-    static unsigned long previousMillis = 0;
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= interval)
-    {
-      previousMillis = currentMillis;
-      return true;
-    }
-    return false;
-  }
-
-void checkonReceive() { //TODO ver se essa é a funçã oque recebe o retorno do gateway
-    if (onReceive_flag == 0) {
-      int time = (rtc.getMinutes() - startUpMinute);
-      Serial.print("time:   "); Serial.println(time);
-      if (rtc.getMinutes() - startUpMinute >= 2 ) {
-      //#ifdef enableSerialLog
-            Serial.print("Não recebeu a Data do Gateway! Vai dormir por 30 segundos ");
-            delay (100);
-          //#endif
-          //vai dormir por 30 segundos...
-          // LowPower.shutdown(1000 * 30); //D.S por 1000ms* 30s * sleepTime/
-        }
-    }
-}
-
-boolean runClockEvery(unsigned long interval)
-  {
-    static unsigned long previousMillis = 0;
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= interval)
-    {
-      previousMillis = currentMillis;
-      return true;
-    }
-    return false;
-  }
-
-  //=============================================================================================================
-  //Initialize LoRa module
-  void start_LoRa(){
-    //LoRa.setTxPower(20);
-    //SPI LoRa pins
-    LoRa.setPins(csPin, resetPin, irqPin);
-    //LoRa.setPins(Lora_SS, Lora_RST, Lora_DIO0); //pinos definidos diretamente na lib
-    //SPI.begin(SCK, MISO, MOSI, SS); //pinos definidos diretamente na lib
-    
-
-    while (!LoRa.begin(BAND) && counter < 10) {
-      Serial.print(".");
-      counter++;
-      delay(500);
-    }
-    if (counter == 10) {
-      Serial.println("LoRa initialization Failed!"); 
-          // delay (100);
-    }
-        if (counter < 10) {
-          #ifdef enableSerialLog
-            Serial.println("LoRa initialization OK!"); 
-          #endif
-    }
-
-    //Setup receiver para receber o update da hora:
-    #ifdef enableSerialLog
-      Serial.println("LoRa Receiver Callback com LoRa Reset na PA0");
-      Serial.println("LoRa Simple Node");
-      Serial.println("Only receive messages from gateways");
-      Serial.println("Tx: invertIQ disable");
-      Serial.println("Rx: invertIQ enable");
-      Serial.println();
-    #endif
-    // register the receive callback
-    LoRa.onReceive(onReceive); 
-    LoRa.onTxDone(onTxDone);
-    LoRa_rxMode();
-  } //end start_LoRa
-
-  void sendReadings() {
-    if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
-      LoRaMessage = String(ID) + "/" + String(distanciaLida) + "&" + String(distanciaLida);
-      //Send LoRa packet to receiver
-      LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
-      #ifdef enableSerialLog
-        Serial.print("Sending packet N°: ");   Serial.println(readingID);
-        Serial.print("LoRaMessage: ");   Serial.println(LoRaMessage);
-      #endif
-      readingID++;
-    }
-  }
-
-#endif //enableLoRa
 
 //////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
 // Mostra dados do sketch e configura a serial
@@ -757,4 +561,216 @@ int comparar(const void *a, const void *b) {
  
  }
 
+#ifdef enableLoRa
+  void LoRa_rxMode(){
+    LoRa.enableInvertIQ();                // active invert I and Q signals
+    LoRa.receive();                       // set receive mode
+  }
+
+  void LoRa_txMode(){
+    LoRa.idle();                          // set standby mode
+    LoRa.disableInvertIQ();               // normal mode
+  }
+
+  //==================================== Lora Callback void onReceive ===================================================
+void onReceive(int packetSize) {
+  onReceive_flag = 1;
+  #ifdef enableSerialLog
+    Serial.print("Pacote LoRa Recebido do Gateway: ");
+  #endif
+  
+  int rssi;
+  String dia01;
+  String mes01;
+  String ano01;
+  String hora01;
+  String minuto01;
+  String segundo01;
+  String dia02;
+  String mes02;
+  String ano02;
+  String hora02;
+  String minuto02;
+  String segundo02;
+
+	while (LoRa.available()) {
+		//Aqui eu faço ele entrar em deep sleep assim que receber a mensagem do Gateway
+    
+    String LoRaData = LoRa.readString();
+		// LoRaData format: dia/mes@ano_hora,minuto%segundo
+		// String example:2/2@21_20,57%27
+		Serial.print("LoRaData: "); Serial.println(LoRaData);
+    //recebimento da data01
+    int pos1 = LoRaData.indexOf('/');
+		int pos2 = LoRaData.indexOf('@');
+		int pos3 = LoRaData.indexOf('_');
+    int pos4 = LoRaData.indexOf(',');
+		int pos5 = LoRaData.indexOf('%');
+
+    //recebimento da data02
+    int pos6 = LoRaData.indexOf('|');
+		int pos7 = LoRaData.indexOf('?');
+		int pos8 = LoRaData.indexOf('#');
+    int pos9 = LoRaData.indexOf('$');
+		int pos10 = LoRaData.indexOf('!');   
+    int pos11 = LoRaData.indexOf('*');   
+
+    dia01 = LoRaData.substring(0, pos1);
+		mes01 = LoRaData.substring(pos1 +1, pos2);
+		ano01 = LoRaData.substring(pos2+1, pos3);
+    hora01 = LoRaData.substring(pos3+1, pos4);
+    minuto01 = LoRaData.substring(pos4+1, pos5);
+		segundo01 = LoRaData.substring(pos5+1, pos6);  
+
+		dia02 = LoRaData.substring(pos6 + 1, pos7);
+		mes02 = LoRaData.substring(pos7 +1, pos8);
+		ano02 = LoRaData.substring(pos8+1, pos9);
+    hora02 = LoRaData.substring(pos9+1, pos10);
+    minuto02 = LoRaData.substring(pos10+1, pos11);
+		segundo02 = LoRaData.substring(pos11+1, LoRaData.length());  
+
+    Serial.println("Data e hora recebidas do Gateway:");
+    Serial.print("Dia:"); Serial.println(dia01);
+    Serial.print("Mês:"); Serial.println(mes01);
+    Serial.print("Ano:"); Serial.println(ano01);
+    Serial.print("Hora:"); Serial.println(hora01);
+    Serial.print("Minuto:"); Serial.println(minuto01);
+    Serial.print("Segundo:"); Serial.println(segundo01);
+  
+    // //chega se a data não chegou com erro de transmissão
+    // if (dia01 == dia02 and mes01 == mes02 and ano01 == ano02 and hora01 == hora02 and minuto01 == minuto02 and segundo01 == segundo02 )
+    // {
+    //   hours = hora01.toInt();
+    //   minutes = minuto01.toInt();
+    //   seconds = segundo01.toInt();
+    //   rtc.setTime(hours, minutes, seconds);
+
+    //   day = dia01.toInt();
+    //   month = mes01.toInt();
+    //   year = ano01.toInt();
+    //   rtc.setDate(weekDay, day, month, year);
+    //   vaiDormir_flag = 1;
+    //   readTime();
+
+    //   enableBackupDomain();
+    //   setBackupRegister(3, 10); //indica que tem que entrar em deep sleep
+    //   disableBackupDomain();
+    // }
+      // Get RSSI
+      #ifdef enableSerialLog
+        //rssi = LoRa.packetRssi();
+        //Serial.print(" with RSSI ");    
+        //Serial.println(rssi);
+      #endif
+
+  }
+}
+  
+  void LoRa_sendMessage(String message) {
+    LoRa_txMode();                        // set tx mode
+    LoRa.beginPacket();                   // start packet
+    LoRa.print(message);                  // add payload
+    LoRa.endPacket(true);                 // finish packet and send it
+  }
+
+  void onTxDone() {
+    #ifdef enableSerialLog
+      Serial.println("TxDone");
+    #endif
+    LoRa_rxMode();
+  }
+
+  boolean runEvery(unsigned long interval)
+  {
+    static unsigned long previousMillis = 0;
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval)
+    {
+      previousMillis = currentMillis;
+      return true;
+    }
+    return false;
+  }
+
+void checkonReceive() { //TODO ver se essa é a funçã oque recebe o retorno do gateway
+    if (onReceive_flag == 0) {
+      int time = (rtc.getMinutes() - startUpMinute);
+      Serial.print("time:   "); Serial.println(time);
+      if (rtc.getMinutes() - startUpMinute >= 2 ) {
+      //#ifdef enableSerialLog
+            Serial.print("Não recebeu a Data do Gateway! Vai dormir por 30 segundos ");
+            delay (100);
+          //#endif
+          //vai dormir por 30 segundos...
+          // LowPower.shutdown(1000 * 30); //D.S por 1000ms* 30s * sleepTime/
+        }
+    }
+}
+
+boolean runClockEvery(unsigned long interval)
+  {
+    static unsigned long previousMillis = 0;
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval)
+    {
+      previousMillis = currentMillis;
+      return true;
+    }
+    return false;
+  }
+
+  //=============================================================================================================
+  //Initialize LoRa module
+  void start_LoRa(){
+    //LoRa.setTxPower(20);
+    //SPI LoRa pins
+    LoRa.setPins(csPin, resetPin, irqPin);
+    //LoRa.setPins(Lora_SS, Lora_RST, Lora_DIO0); //pinos definidos diretamente na lib
+    //SPI.begin(SCK, MISO, MOSI, SS); //pinos definidos diretamente na lib
+    
+
+    while (!LoRa.begin(BAND) && counter < 10) {
+      Serial.print(".");
+      counter++;
+      delay(500);
+    }
+    if (counter == 10) {
+      Serial.println("LoRa initialization Failed!"); 
+          // delay (100);
+    }
+        if (counter < 10) {
+          #ifdef enableSerialLog
+            Serial.println("LoRa initialization OK!"); 
+          #endif
+    }
+
+    //Setup receiver para receber o update da hora:
+    #ifdef enableSerialLog
+      Serial.println("LoRa Receiver Callback com LoRa Reset na PA0");
+      Serial.println("LoRa Simple Node");
+      Serial.println("Only receive messages from gateways");
+      Serial.println("Tx: invertIQ disable");
+      Serial.println("Rx: invertIQ enable");
+      Serial.println();
+    #endif
+    // register the receive callback
+    LoRa.onReceive(onReceive); 
+    LoRa.onTxDone(onTxDone);
+    LoRa_rxMode();
+  } //end start_LoRa
+
+  void sendReadings() {
+    if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
+      LoRaMessage = String(ID) + "/" + String(distanciaLida) + "&" + String(distanciaLida);
+      //Send LoRa packet to receiver
+      LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
+      #ifdef enableSerialLog
+        Serial.print("Sending packet N°: ");   Serial.println(readingID);
+        Serial.print("LoRaMessage: ");   Serial.println(LoRaMessage);
+      #endif
+      readingID++;
+    }
+  }
+
+#endif //enableLoRa
 /*********************************************** End Function Definitions ********************************************/
