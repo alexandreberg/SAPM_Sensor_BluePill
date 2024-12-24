@@ -48,27 +48,81 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
 */  
 
 
-/*********************************************** Library Definitions ***********************************************/
-#include <Arduino.h>
-#include <stdlib.h>
-#include <STM32LowPower.h>      //Deep Sleep for STM32
-
-/*********************************************** Variable and Function Definitions ***********************************************/
+/*********************************************** Macro Definitions ***********************************************/
 //Identificação para o gateway saber quem está enviando os dados
 #define ID "Sensor_01"          //<=== MUDAR AQUI ====
 
 #define enableSerialLog         //Enable Serial debug
 #define enableWatchDog          //desativado o watchdog
 #define enableUltraSom          //Enable Ultrasonic Sensor
-
 #define enableRTCstm32          //using STM32 internal RTC
+//#define enableTinyRTC         //TODO: not used because de SPI buz freezes and lose the connection 
+#define enableLoRa              //enable LoRa communication
+
+/*********************************************** Library Definitions ***********************************************/
+#include <Arduino.h>
+#include <stdlib.h>
+#include <STM32LowPower.h>      //Deep Sleep for STM32
+
 #ifdef enableRTCstm32
   #include <STM32RTC.h>
 #endif
-//#define enableTinyRTC         //TODO: not used because de SPI buz freezes and lose the connection 
 
 #ifdef enableWatchDog
   #include <IWatchdog.h>        //Enable watchdog for deep sleep mode
+#endif
+
+#ifdef enableTinyRTC
+  #include "RTClib.h"           //Date and time functions using a DS1307 RTC connected via I2C and Wire lib
+#endif //enableTinyRTC
+
+int vaiDormir_flag = 0;         //flag to ender in deep sleep
+
+#ifdef enableUltraSom
+  #include <NewPing.h>
+  const unsigned int trigPin = PA3; 
+  const unsigned int echoPin = PA2; 
+  long lastEchoDistance = 0;          // we want to keep these values after reset
+  unsigned long pulseLength = 0;
+  unsigned long distanciaLida = 0;
+  unsigned long qtdMaxLeituras = 0;
+  boolean ultrasonicActive  = true;
+#endif //enableUltraSom
+
+#ifdef enableLoRa
+//Libraries for LoRa
+  #include <SPI.h>
+  #include <LoRa.h>
+  //#include <LoRa_stm32.h> //lib alterada para o stm32
+#endif //enableLoRa
+
+#ifdef enableLoRa
+  //define the pins used by the LoRa transceiver module
+  #define SCK PA5
+  #define MISO PA6
+  #define MOSI PA7
+  #define SS PA4
+  #define RST PA0
+  #define DIO0 PA1
+  const int csPin = PA4;          // LoRa radio chip select
+  const int resetPin = PA0;        // LoRa radio reset
+  const int irqPin = PA1;          // change for your board; must be a hardware interrupt pin
+
+  //433E6 for Asia
+  //866E6 for Europe
+  //915E6 for North America
+  #define BAND 915E6  //Brasil : 902-928 MHz
+
+  //packet counter
+  /////int readingID = 0; //passando para a memoria RTC (ver em qual sketch foi feito)
+  int counter = 0;
+  long readingID = 0;
+  
+  String LoRaMessage = "";
+#endif  //enableLoRa
+
+/*********************************************** Global Variables ***********************************************/
+#ifdef enableWatchDog
   const int ledPin = PB13;
 #endif
 
@@ -82,9 +136,6 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   int   seconds     = 0;
   float timezone = 0;
   String DATE_FULL3;
-
-  // Date and time functions using a DS1307 RTC connected via I2C and Wire lib
-  #include "RTClib.h"
 
   RTC_DS1307 rtc;
 
@@ -108,19 +159,6 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
    byte year = 0;
   
 #endif //enableRTCstm32
-
-int vaiDormir_flag = 0;         //flag to ender in deep sleep
-
-#ifdef enableUltraSom
-  #include <NewPing.h>
-  const unsigned int trigPin = PA3; 
-  const unsigned int echoPin = PA2; 
-  long lastEchoDistance = 0;          // we want to keep these values after reset
-  unsigned long pulseLength = 0;
-  unsigned long distanciaLida = 0;
-  unsigned long qtdMaxLeituras = 0;
-  boolean ultrasonicActive  = true;
-#endif //enableUltraSom
 
 /*********************************************** Function Prototypes ***********************************************/
 void readUltrasom();
@@ -149,38 +187,6 @@ int comparar(const void *a, const void *b);
 void vaiDormir();
 
 /*********************************************** End Function Prototypes *******************************************/
-
-
-
-#define enableLoRa
-#ifdef enableLoRa
-//Libraries for LoRa
-  #include <SPI.h>
-  #include <LoRa.h>
-  //#include <LoRa_stm32.h> //lib alterada para o stm32
-  //define the pins used by the LoRa transceiver module
-  #define SCK PA5
-  #define MISO PA6
-  #define MOSI PA7
-  #define SS PA4
-  #define RST PA0
-  #define DIO0 PA1
-  const int csPin = PA4;          // LoRa radio chip select
-  const int resetPin = PA0;        // LoRa radio reset
-  const int irqPin = PA1;          // change for your board; must be a hardware interrupt pin
-
-  //433E6 for Asia
-  //866E6 for Europe
-  //915E6 for North America
-  #define BAND 915E6  //Brasil : 902-928 MHz
-
-  //packet counter
-  /////int readingID = 0; //passando para a memoria RTC (ver em qual sketch foi feito)
-  int counter = 0;
-  long readingID = 0;
-  
-  String LoRaMessage = "";
-#endif
 
 #ifdef enableLoRa
   void LoRa_rxMode(){
