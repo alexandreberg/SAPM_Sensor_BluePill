@@ -38,24 +38,29 @@ Teste do STM32L476 Nucleo com o módulo LoRa RFM95
   *             - 1min on e 1min off, ajustar para não ficar tanto tempo on e desligar assim que transmitir
   * 24.11.2024  - alteramdo a função readUltrasom() para trabalhar com a mediana
   * 
+  * 24.12.2024  - Limpando e organizando o arquivo
+  * 
   * TODO:
   * se funcionar sem hibernação, ajustar a leitura do ultrassom pela mediana.
   * reativar a hibernação e fazer dormir por 1min
   * Precisa medir com a régua, para saber se está funcional
+  * 
 */  
 
-#include <stdlib.h>
 
+/*********************************************** Library Definitions ***********************************************/
+#include <Arduino.h>
+#include <stdlib.h>
+#include <STM32LowPower.h>      //Deep Sleep for STM32
+
+/*********************************************** Variable and Function Definitions ***********************************************/
 //Identificação para o gateway saber quem está enviando os dados
-//#define ID "Sensor_BluePill-01" //<=== MUDAR AQUI ====
 #define ID "Sensor_01"          //<=== MUDAR AQUI ====
 
 #define enableSerialLog         //Enable Serial debug
 #define enableWatchDog          //desativado o watchdog
+#define enableUltraSom          //Enable Ultrasonic Sensor
 
-#include <Arduino.h>
-#include <STM32LowPower.h>      //Deep Sleep for STM32
-int vaiDormir_flag = 0;         //flag to ender in deep sleep
 #define enableRTCstm32          //using STM32 internal RTC
 #ifdef enableRTCstm32
   #include <STM32RTC.h>
@@ -66,6 +71,7 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
   #include <IWatchdog.h>        //Enable watchdog for deep sleep mode
   const int ledPin = PB13;
 #endif
+
 #ifdef enableTinyRTC
   //Armazenamento da data e hora
   int   year    = 0;
@@ -103,6 +109,19 @@ int vaiDormir_flag = 0;         //flag to ender in deep sleep
   
 #endif //enableRTCstm32
 
+int vaiDormir_flag = 0;         //flag to ender in deep sleep
+
+#ifdef enableUltraSom
+  #include <NewPing.h>
+  const unsigned int trigPin = PA3; 
+  const unsigned int echoPin = PA2; 
+  long lastEchoDistance = 0;          // we want to keep these values after reset
+  unsigned long pulseLength = 0;
+  unsigned long distanciaLida = 0;
+  unsigned long qtdMaxLeituras = 0;
+  boolean ultrasonicActive  = true;
+#endif //enableUltraSom
+
 /*********************************************** Function Prototypes ***********************************************/
 void readUltrasom();
 float calcularMediana(int *array, int tamanho);
@@ -120,145 +139,16 @@ int comparar(const void *a, const void *b);
   void readTime();
 #endif //enableRTCstm32
 
+#ifdef enableUltraSom
+  void ultrasonic_setup();
+  void readUltrasom();
+  float calcularMediana(int *array, int tamanho);
+  int comparar(const void *a, const void *b);
+#endif //enableUltraSom
+
 
 /*********************************************** End Function Prototypes *******************************************/
 
-#define enableUltraSom
-#ifdef enableUltraSom
-  #include <NewPing.h>
-  
-  const unsigned int trigPin = PA3; 
-  const unsigned int echoPin = PA2; 
-  long lastEchoDistance = 0;          // we want to keep these values after reset
-  unsigned long pulseLength = 0;
-  unsigned long distanciaLida = 0;
-  unsigned long qtdMaxLeituras = 0;
-  boolean ultrasonicActive  = true;
-
-  //=============================================================================================================
-  // Ultrasonic Distance Sensor setup
-  void ultrasonic_setup(){
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);  
-    #ifdef enableSerialLog
-      Serial.println("Setting up Ultrasonic Sensor.");
-    #endif
-  } //end ultrasonic_setup
-
-//   void readUltrasom() { //Meu código original
-//     // ===== Sensor Ultrasonic =====
-
-//     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
-//         checadistancia: //Label para goto
-//         for (int i=0  ; i < 3; i++) {
-//             digitalWrite(trigPin, LOW);                    // send low to get a clean pulse     
-//             delayMicroseconds(5);                          // let it settle
-//             digitalWrite(trigPin, HIGH);                   // send high to trigger device
-//             delayMicroseconds(10);                         // let it settle
-//             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
-//             distanciaLida = pulseLength / 58;             // calculate distance (cm)
-//             Serial.print("distanciaLida: "); Serial.println(distanciaLida);
-//             delay(50);
-
-//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por qtdMaxLeituras para evitar loop infinito
-//             if (distanciaLida > 500 and qtdMaxLeituras < 200){ //descarta leituras maiores que 500cm
-//               qtdMaxLeituras = qtdMaxLeituras + 1;
-//               goto checadistancia;
-//             }//if distanciaLida
-//         } //for
-
-//         if ((distanciaLida - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
-//             lastEchoDistance = distanciaLida;
-//             //#ifdef enableSerialLog
-//               Serial.print("Distancia Lida pelo Sensor Ultrasonico: ");
-//               Serial.print(distanciaLida); Serial.println("cm");
-//               Serial.println("");
-//             //#endif
-//             delay(50);
-//         } //if
-//       delay(500); 
-//       }
-
-
-// Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
-void readUltrasom() {
-  int leituras[11]; //11 leituras
-  int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
-  Serial.println("tamanhoArray = " + String(tamanhoArray) );
-  // Faz 11 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
-  for (int i = 0; i <= tamanhoArray; i++) { //for1
-    checadistancia: // Label para goto
-    // for (int j = 0; j < 3; j++) { //for2
-      digitalWrite(trigPin, LOW);
-      delayMicroseconds(5);
-      digitalWrite(trigPin, HIGH);
-      delayMicroseconds(10);
-      pulseLength = pulseIn(echoPin, HIGH);
-      distanciaLida = pulseLength / 58;
-      delay(50);
-
-      if (distanciaLida > 500 || distanciaLida < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
-        // qtdMaxLeituras = qtdMaxLeituras + 1;
-        goto checadistancia;
-      }
-    // } //for2
-    leituras[i] = distanciaLida;
-    // Serial.println("leituras-" + String(i) + " = " + String(leituras[i]) );
-  } //for1
-
-  // Calcula a mediana
-  float mediana = calcularMediana(leituras, tamanhoArray);
-
-  // Verifica se a mediana mudou significativamente
-  // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
-    // lastEchoDistance = mediana;
-
-    Serial.print("Distancia Lida pelo Sensor Ultrasonico (mediana): ");
-    Serial.print(mediana); 
-    Serial.println("cm");
-    Serial.println("");
-  // }
-
-  delay(50); //para economizar bateria, pode-se reduzir esse tempo
-}
-
-// // Função para calcular a mediana
-// float calcularMediana(int *array, int tamanho) {
-//   qsort(array, tamanho, sizeof(int), comparar);
-
-//   if (tamanho % 2 == 0) {
-//     return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
-//   } else {
-//     return (float)array[tamanho / 2];
-    
-//   }
-// }
-
-// int comparar(const void *a, const void *b) {
-//   return (*(int *)a - *(int *)b);
-// }
-// Função para calcular a mediana
-float calcularMediana(int *array, int tamanho) {
-  qsort(array, tamanho, sizeof(int), comparar);
-
-  // Imprime os valores ordenados
-  Serial.println("Valores ordenados: ");
-  for (int i = 0; i < tamanho; i++) {
-    Serial.println(array[i]);
-  }
-  Serial.println("\n");
-
-  if (tamanho % 2 == 0) {
-    return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
-  } else {
-    return (float)array[tamanho / 2];
-  }
-}
-
-int comparar(const void *a, const void *b) {
-  return (*(int *)a - *(int *)b);
-}
-#endif //enableUltraSom
 
 //////////////////////////////////////////////////// vaiDormir() //////////////////////////////////////////////////// 
  void vaiDormir() {
@@ -559,7 +449,7 @@ void sketchSetup() {
     // Serial.println("\n(48) 99852-6523");
     // Serial.println("\nwww.ilha3d.com");
     // Serial.println("\n");
-    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-01 - mediana");
+    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-02 - mediana");
     Serial.println("");
 }
 
@@ -733,5 +623,131 @@ void setupRTC(){
    Serial.printf("%02d:%02d:%02d.%03d\n", rtc.getHours(), rtc.getMinutes(), rtc.getSeconds(), rtc.getSubSeconds());
   }
 #endif //enableRTCstm32
+
+#ifdef enableUltraSom
+  // Ultrasonic Distance Sensor setup
+  void ultrasonic_setup(){
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);  
+    #ifdef enableSerialLog
+      Serial.println("Setting up Ultrasonic Sensor.");
+    #endif
+  } //end ultrasonic_setup
+
+//   void readUltrasom() { //Meu código original
+//     // ===== Sensor Ultrasonic =====
+
+//     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
+//         checadistancia: //Label para goto
+//         for (int i=0  ; i < 3; i++) {
+//             digitalWrite(trigPin, LOW);                    // send low to get a clean pulse     
+//             delayMicroseconds(5);                          // let it settle
+//             digitalWrite(trigPin, HIGH);                   // send high to trigger device
+//             delayMicroseconds(10);                         // let it settle
+//             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
+//             distanciaLida = pulseLength / 58;             // calculate distance (cm)
+//             Serial.print("distanciaLida: "); Serial.println(distanciaLida);
+//             delay(50);
+
+//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por qtdMaxLeituras para evitar loop infinito
+//             if (distanciaLida > 500 and qtdMaxLeituras < 200){ //descarta leituras maiores que 500cm
+//               qtdMaxLeituras = qtdMaxLeituras + 1;
+//               goto checadistancia;
+//             }//if distanciaLida
+//         } //for
+
+//         if ((distanciaLida - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
+//             lastEchoDistance = distanciaLida;
+//             //#ifdef enableSerialLog
+//               Serial.print("Distancia Lida pelo Sensor Ultrasonico: ");
+//               Serial.print(distanciaLida); Serial.println("cm");
+//               Serial.println("");
+//             //#endif
+//             delay(50);
+//         } //if
+//       delay(500); 
+//       }
+
+// Função adaptada para calcular a mediana de 10 leituras do sensor ultrassônico e mostrá-las como distância lida
+void readUltrasom() {
+  int leituras[11]; //11 leituras
+  int tamanhoArray = sizeof(leituras) / sizeof(leituras[0]);
+  Serial.println("tamanhoArray = " + String(tamanhoArray) );
+  // Faz 11 leituras consecutivas para calcular a mediana e eliminar leituras indevidas e outliers devido a reflexão do ultrasom
+  for (int i = 0; i <= tamanhoArray; i++) { //for1
+    checadistancia: // Label para goto
+    // for (int j = 0; j < 3; j++) { //for2
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(5);
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      pulseLength = pulseIn(echoPin, HIGH);
+      distanciaLida = pulseLength / 58;
+      delay(50);
+
+      if (distanciaLida > 500 || distanciaLida < 0) { //elimina leituras erroneas acima ou abaixo do range do sensor
+        // qtdMaxLeituras = qtdMaxLeituras + 1;
+        goto checadistancia;
+      }
+    // } //for2
+    leituras[i] = distanciaLida;
+    // Serial.println("leituras-" + String(i) + " = " + String(leituras[i]) );
+  } //for1
+
+
+  // Calcula a mediana
+  float mediana = calcularMediana(leituras, tamanhoArray);
+
+  // Verifica se a mediana mudou significativamente
+  // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
+    // lastEchoDistance = mediana;
+
+    Serial.print("Distancia Lida pelo Sensor Ultrasonico (mediana): ");
+    Serial.print(mediana); 
+    Serial.println("cm");
+    Serial.println("");
+  // }
+
+  delay(50); //para economizar bateria, pode-se reduzir esse tempo
+}
+
+// // Função para calcular a mediana
+// float calcularMediana(int *array, int tamanho) {
+//   qsort(array, tamanho, sizeof(int), comparar);
+
+//   if (tamanho % 2 == 0) {
+//     return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+//   } else {
+//     return (float)array[tamanho / 2];
+    
+//   }
+// }
+
+// int comparar(const void *a, const void *b) {
+//   return (*(int *)a - *(int *)b);
+// }
+// Função para calcular a mediana
+float calcularMediana(int *array, int tamanho) {
+  qsort(array, tamanho, sizeof(int), comparar);
+
+  // Imprime os valores ordenados
+  Serial.println("Valores ordenados: ");
+  for (int i = 0; i < tamanho; i++) {
+    Serial.println(array[i]);
+  }
+  Serial.println("\n");
+
+  if (tamanho % 2 == 0) {
+    return (float)(array[tamanho / 2 - 1] + array[tamanho / 2]) / 2;
+  } else {
+    return (float)array[tamanho / 2];
+  }
+}
+
+int comparar(const void *a, const void *b) {
+  return (*(int *)a - *(int *)b);
+}
+#endif //enableUltraSom
+
 /*********************************************** End Function Definitions ********************************************/
 
