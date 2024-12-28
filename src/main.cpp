@@ -108,39 +108,37 @@ String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - median";  /
 #ifdef enableUltrasonic
   const unsigned int triggerPin = PA3; 
   const unsigned int echoPin    = PA2; 
-  // long lastEchoDistance = 0;           // We want to keep these values after reset
+  // long lastEchoDistance = 0;             // We want to keep these values after reset
   unsigned long pulseLength = 0;
-  unsigned long readingDistance = 0;      // Measured distance in centimeters
-  // unsigned long maxReadingNumber = 0;     // Number of ultrasonic readings to do the calculation of mean and average
+  unsigned long readingDistance = 0;        // Measured distance in centimeters
+  // unsigned long maxReadingNumber = 0;    // Number of ultrasonic readings to do the calculation of mean and average
   // boolean ultrasonicActive  = true;
 #endif //enableUltrasonic
 
-int goToSleep_flag = 0;         //flag to ender in deep sleep
+int goToSleep_flag = 0;                     // Flag to enter in deep sleep
 
 #ifdef enableLoRa
   //define the pins used by the LoRa transceiver module
-  #define SCK PA5
-  #define MISO PA6
-  #define MOSI PA7
-  #define SS PA4
-  #define RST PA0
-  #define DIO0 PA1
-  const int csPin = PA4;            //LoRa radio chip select
-  const int resetPin = PA0;         //LoRa radio reset
-  const int irqPin = PA1;           //change for your board; must be a hardware interrupt pin
+  #define SCK           PA5
+  #define MISO          PA6
+  #define MOSI          PA7
+  #define SS            PA4
+  #define RST           PA0
+  #define DIO0          PA1
+  const int csPin =     PA4;         // LoRa radio chip select
+  const int resetPin =  PA0;         // LoRa radio reset
+  const int irqPin =    PA1;         // Change for your board; must be a hardware interrupt pin of the STM32 Bluepill
 
-  #define BAND 915E6  /*  Brazil : 902-928 MHz
+  // Define LoRa Communication Band:
+  #define BAND 915E6  /*  915E6 for Brazil (902-928 MHz)
                           433E6 for Asia
                           866E6 for Europe
                           915E6 for North America */
 
-
-  //packet counter
-  /////int readingID = 0; //TODO: passando para a memoria RTC (ver em qual sketch foi feito)
-  int counter = 0;
-  long readingID = 0;
+  int lora_startup_counter = 0;     // Counter to check if LoRa chip started communication propperly
+  long readingID = 0;               // Sending packet N°
   
-  String LoRaMessage = "";
+  String LoRaMessage = "";          // String to store the LoRa Message that chould be sent
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
@@ -689,24 +687,24 @@ boolean runClockEvery(unsigned long interval)
 
   //=============================================================================================================
   //Initialize LoRa module
+  //REVIEWED
   void start_LoRa(){
-    //LoRa.setTxPower(20);
-    //SPI LoRa pins
-    LoRa.setPins(csPin, resetPin, irqPin);
+    //LoRa.setTxPower(20);    // Change transmission power
+    
+    LoRa.setPins(csPin, resetPin, irqPin);    //SPI LoRa pins
     //LoRa.setPins(Lora_SS, Lora_RST, Lora_DIO0); //pinos definidos diretamente na lib
     //SPI.begin(SCK, MISO, MOSI, SS); //pinos definidos diretamente na lib
-    
 
-    while (!LoRa.begin(BAND) && counter < 10) {
+    while (!LoRa.begin(BAND) && lora_startup_counter < 10) {
       Serial.print(".");
-      counter++;
+      lora_startup_counter++;
       delay(500);
     }
-    if (counter == 10) {
+    if (lora_startup_counter == 10) {
       Serial.println("LoRa initialization Failed!"); 
           // delay (100);
     }
-        if (counter < 10) {
+        if (lora_startup_counter < 10) {
           #ifdef enableSerialLog
             Serial.println("LoRa initialization OK!"); 
           #endif
@@ -714,13 +712,14 @@ boolean runClockEvery(unsigned long interval)
 
     //Setup receiver para receber o update da hora:
     #ifdef enableSerialLog
-      Serial.println("LoRa Receiver Callback com LoRa Reset na PA0");
+      Serial.println("LoRa Receiver Callback with LoRa Reset in PA0");
       Serial.println("LoRa Simple Node");
       Serial.println("Only receive messages from gateways");
       Serial.println("Tx: invertIQ disable");
       Serial.println("Rx: invertIQ enable");
       Serial.println();
     #endif
+
     // register the receive callback
     LoRa.onReceive(onReceive); 
     LoRa.onTxDone(onTxDone);
