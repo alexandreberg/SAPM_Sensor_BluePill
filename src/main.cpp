@@ -11,6 +11,16 @@
  *    RESET - (PA0)
  *    DIO0 - (PA1)
  * 
+ * BackupRegisters:
+ * See https://community.st.com/t5/stm32-mcus/how-to-use-the-stm32-s-backup-registers/ta-p/49892
+ *
+ * Backup registers can be written/read and protected and have the option of being preserved in VBAT mode when the VDD domain is powered off. 
+ * The BackUp Registers are part of the RTC peripheral so we will need to enable the RTC to be able to access them. 
+ * The STM32 Blue Pill, which typically uses the STM32F103C8T6 microcontroller, has 10 backup registers.
+ * Each register is 16 bits wide, providing a total of 20 bytes of data that can be stored in the backup domain.
+ * 
+ * (!) To be able to preserve the backup registers through a power cycle, VBAT must remain powered when VDD is removed, this is called the VBAT mode.
+ *
  * 23.11.2024 - Changing the code to read and hibernate for 1 minute between ultrasound readings.
  *             - 1min on and 1min off, adjust to not stay on for so long and turn off as soon as it transmits
  * 24.11.2024 - changing the readUltrasonic() function to work with the median
@@ -65,6 +75,7 @@
 #endif
 
 /*********************************************** Global Variables ***********************************************/
+//REVIEWED
 String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - median";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
@@ -115,7 +126,7 @@ String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - median";  /
   // boolean ultrasonicActive  = true;
 #endif //enableUltrasonic
 
-int goToSleep_flag = 0;                     // Flag to enter in deep sleep
+int goToSleep_flag = 0;         // Flag to enter in deep sleep mode
 
 #ifdef enableLoRa
   //define the pins used by the LoRa transceiver module
@@ -138,10 +149,14 @@ int goToSleep_flag = 0;                     // Flag to enter in deep sleep
   int lora_startup_counter = 0;     // Counter to check if LoRa chip started communication propperly
   long readingID = 0;               // Sending packet N°
   
-  String LoRaMessage = "";          // String to store the LoRa Message that chould be sent
+  String LoRaMessage = "";          // String to store the LoRa Message that should be sent
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
+//REVIEWED
+void sketchSetup();
+
+
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
 int compareReadings(const void *a, const void *b);
@@ -179,24 +194,24 @@ int compareReadings(const void *a, const void *b);
 #endif //enableLoRa
 
 void goToSleep();
-void sketchSetup();
-
 
 /*********************************************** End Function Prototypes *******************************************/
-
+// TODO: Need to be better documented and clarified!!!!
 void setup() {
-  sketchSetup();
-  pinMode(PC13, OUTPUT); // initialize digital pin PC13 (LED) as an output.
+  sketchSetup();                      // Setup of the Serial log and initial serial setup
+  pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
   
-  #ifdef enableWatchDog // TODO: if the LoRa gateway is not founf go to deep sleep ==> é necessário?
-    enableBackupDomain();
-    if ( getBackupRegister(2) != 0) { //indicates that  have to go into deepsleep
+  #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
+    enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
+
+    if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
+
       Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
       setBackupRegister(2, 0);
       delay(100);
       setupRTC();
       LowPower.begin();
-      goToSleep_flag = 2; //hibernation flag 1min
+      goToSleep_flag = 2; //hibernation flag 1min ?????
       goToSleep();    
     }
 
@@ -207,7 +222,7 @@ void setup() {
       setBackupRegister(3, 0);
       delay(100);
       LowPower.begin();
-      goToSleep_flag = 1; //hibernation flag normal deepsleep
+      goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
       goToSleep();
     }
     disableBackupDomain();
@@ -261,6 +276,20 @@ void loop() {
 /*********************************************** End loop () ***********************************************/
 
 /*********************************************** Function Definitions ***********************************************/
+//////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
+//REVIEWED
+// Shows system infomation and configures serial interface
+void sketchSetup() {
+  Serial.begin(115200); 
+
+  Serial.print("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
+  Serial.println("\nIlha 3d");
+  Serial.println("\nwww.ilha3d.com");
+  Serial.println("\n");
+  Serial.println(String (version));
+  Serial.println("");
+}
+
 #ifdef enableTinyRTC
 void startTinyRTC() {
     while (!Serial); // wait for serial port to connect. Needed for native USB
@@ -328,7 +357,7 @@ void setupRTC(){
       // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
       // By default the LSI is selected as source.
       //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
-      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 ligado com diodo no VBAT
+      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
       rtc.begin(); // initialize RTC 24H format
   }  
 
@@ -356,6 +385,7 @@ void setupRTC(){
 #endif //enableRTCstm32
 
 #ifdef enableUltrasonic
+  //REVIEWED
   // Ultrasonic Distance Sensor setup
   void ultrasonic_setup(){
     pinMode(triggerPin, OUTPUT);
@@ -741,16 +771,4 @@ boolean runClockEvery(unsigned long interval)
 
 #endif //enableLoRa
 
-//////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
-// Mostra dados do sketch e configura a serial
-void sketchSetup() {
-  Serial.begin(115200); 
-  // Serial.print("\nStarting Sensor "); Serial.println(String(sensor_id)); 
-  Serial.print("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
-    // Serial.println("\nIlha 3d");
-    // Serial.println("\nwww.ilha3d.com");
-    // Serial.println("\n");
-    Serial.println(String (version));
-    Serial.println("");
-}
 /*********************************************** End Function Definitions ********************************************/
