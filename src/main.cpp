@@ -399,7 +399,7 @@ void setupRTC(){
 //     // ===== Sensor Ultrasonic =====
 
 //     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
-//         checadistancia: //Label para goto
+//         check_distance: //Label para goto
 //         for (int i=0  ; i < 3; i++) {
 //             digitalWrite(triggerPin, LOW);                    // send low to get a clean pulse     
 //             delayMicroseconds(5);                          // let it settle
@@ -413,7 +413,7 @@ void setupRTC(){
 //             // Elimina picos de leitura erroneos do sensor mas só fica aqui por maxReadingNumber para evitar loop infinito
 //             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta readings maiores que 500cm
 //               maxReadingNumber = maxReadingNumber + 1;
-//               goto checadistancia;
+//               goto check_distance;
 //             }//if readingDistance
 //         } //for
 
@@ -429,15 +429,20 @@ void setupRTC(){
 //       delay(500); 
 //       }
 
-// Função adaptada para calcular a mediana de 10 readings do sensor ultrassônico e mostrá-las como distância lida
+// Function adapted to calculate the median of 11 readings from the ultrasonic sensor and display it as the read distance
+//REVIEWED
 void readUltrasonic() {
-  int readings[11]; //11 readings
-  int tamanhoArray = sizeof(readings) / sizeof(readings[0]); //TODO
-  Serial.println("tamanhoArray = " + String(tamanhoArray) );
-  //Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection
-  for (int i = 0; i <= tamanhoArray; i++) { //for1
-    checadistancia: // Label for goto
-    // for (int j = 0; j < 3; j++) { //for2
+  int readings[11];                           // 11 readings (To calculate the median it is better to use an odd number)
+  int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]); 
+
+  #ifdef enableSerialLog
+    Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size) );
+  #endif
+
+  // Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
+  for (int i = 0; i < ultrasonic_readings_array_size; i++) { //for1
+    check_distance: // Label for goto
+    // for (int j = 0; j < 3; j++) { //TODO: for2 introduces the possibility of averaging or applying other filtering techniques to improve the accuracy of the distance measurements.
       digitalWrite(triggerPin, LOW);
       delayMicroseconds(5);
       digitalWrite(triggerPin, HIGH);
@@ -447,32 +452,34 @@ void readUltrasonic() {
       delay(50);
 
       if (readingDistance > 500 || readingDistance < 0) { //eliminate erroneous readings above or below the sensor range
-        // maxReadingNumber = maxReadingNumber + 1;
-        goto checadistancia;
+        goto check_distance;
       }
     // } //for2
     readings[i] = readingDistance;
-    // Serial.println("readings-" + String(i) + " = " + String(readings[i]) );
+
+    #ifdef enableSerialLog
+      Serial.println("readings-" + String(i) + " = " + String(readings[i]) );
+    #endif
   } //for1
 
+  float median = calculateMedian(readings, ultrasonic_readings_array_size);    // Calculate the Median
 
-  // Calcula a mediana
-  float mediana = calculateMedian(readings, tamanhoArray);
+  // TODO: Verifica se a median mudou significativamente
+  // if (abs(median - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
+    // lastEchoDistance = median;
 
-  // Verifica se a mediana mudou significativamente
-  // if (abs(mediana - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
-    // lastEchoDistance = mediana;
-
-    Serial.print("Distancia Lida pelo Sensor Ultrasonico (mediana): ");
-    Serial.print(mediana); 
-    Serial.println("cm");
-    Serial.println("");
+    #ifdef enableSerialLog
+      Serial.println("Distance Read by the Ultrasonic Sensor (median): " + String(median) + "cm");
+      // Serial.print(median); 
+      // Serial.println("cm");
+      // Serial.println("");
+    #endif
   // }
 
   delay(50); //para economizar bateria, pode-se reduzir esse tempo
 }
 
-// // Função para calcular a mediana
+// // Função para calcular a median
 // float calculateMedian(int *array, int arraySize) {
 //   qsort(array, arraySize, sizeof(int), compareReadings);
 
@@ -487,16 +494,20 @@ void readUltrasonic() {
 // int compareReadings(const void *a, const void *b) {
 //   return (*(int *)a - *(int *)b);
 // }
-// Função para calcular a mediana
+
+// Function to calculate the median
+// TODO: improve commenting
 float calculateMedian(int *array, int arraySize) {
   qsort(array, arraySize, sizeof(int), compareReadings);
 
-  // Imprime os valores ordenados
-  Serial.println("Valores ordenados: ");
-  for (int i = 0; i < arraySize; i++) {
-    Serial.println(array[i]);
-  }
-  Serial.println("\n");
+  // Print the sorted values
+  #ifdef enableSerialLog
+    Serial.println("Sorted distance readings:");
+    for (int i = 0; i < arraySize; i++) {
+      Serial.println(array[i]);
+    }
+    Serial.println("\n");
+  #endif
 
   if (arraySize % 2 == 0) {
     return (float)(array[arraySize / 2 - 1] + array[arraySize / 2]) / 2;
