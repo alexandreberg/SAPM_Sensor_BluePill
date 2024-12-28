@@ -65,13 +65,13 @@
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - mediana";
+String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - median";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
-  const int ledPin = PB13;
+  const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
 #endif
 
-#ifdef enableTinyRTC
+#ifdef enableTinyRTC            // Not used
   //Store date and time
   int   year    = 0;
   int   month   = 0;
@@ -87,7 +87,7 @@ String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - mediana";
   char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 #endif //enableTinyRTC
 
-#ifdef enableRTCstm32
+#ifdef enableRTCstm32           // Working
   boolean onReceive_flag = 0;
   /* Get the rtc object */
   STM32RTC& rtc = STM32RTC::getInstance();
@@ -107,12 +107,12 @@ String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - mediana";
 
 #ifdef enableUltrasonic
   const unsigned int triggerPin = PA3; 
-  const unsigned int echoPin = PA2; 
-  long lastEchoDistance = 0;          // we want to keep these values after reset
+  const unsigned int echoPin    = PA2; 
+  // long lastEchoDistance = 0;           // We want to keep these values after reset
   unsigned long pulseLength = 0;
-  unsigned long readingDistance = 0;
-  unsigned long maxReadingNumber = 0; //Number or ultrasonic readings to do the calculation of mean and average
-  boolean ultrasonicActive  = true;
+  unsigned long readingDistance = 0;      // Measured distance in centimeters
+  // unsigned long maxReadingNumber = 0;     // Number of ultrasonic readings to do the calculation of mean and average
+  // boolean ultrasonicActive  = true;
 #endif //enableUltrasonic
 
 int goToSleep_flag = 0;         //flag to ender in deep sleep
@@ -415,7 +415,7 @@ void readUltrasonic() {
       digitalWrite(triggerPin, HIGH);
       delayMicroseconds(10);
       pulseLength = pulseIn(echoPin, HIGH);
-      readingDistance = pulseLength / 58;
+      readingDistance = pulseLength / 58;   // Measured distance in centimeters
       delay(50);
 
       if (readingDistance > 500 || readingDistance < 0) { //eliminate erroneous readings above or below the sensor range
