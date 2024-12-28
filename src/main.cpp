@@ -1,95 +1,72 @@
 /* Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
-Teste do STM32L476 Nucleo com o módulo LoRa RFM95
-  Funcionou ok e transmite para o ESP32 com o NRF95 qdo o botão do pushbotton é pressionado.
-  Ligação do LoRa RFM95 - STM32 Bluepill
-  Semtech SX1276/77/78/79	Arduino(STM32F103CB)
-    VCC	3.3V
-    GND	GND
-    SCK	SCK (PA5)
-    MISO	MISO (PA6)
-    MOSI	MOSI (PA7)
-    NSS	(PA4)
-    RESET	(PA0)
-    DIO0	(PA1)
-  * 12.01.2021 - Funcionou, está recebendo com o Bluepill ligado direto no Lora.
-  * 17.01.2021 - revisando e passando para a placa feita com STM32 Bluepill - Ok envia Distância e nome do sensor e contagem de pacote
-  * implementando o deep sleep no stm32: OK
-  * Tentando salvar dados na memo rtc: não dá
-  * Tentando implementar o RTC clock no próprio RTC do STM32:
-  * TODO: ten que ver para usar o próprio RTC do STM32 e melhorar a lógica
-  * Configurando LoRa Simple Gateway/Node Exemple: 
-    https://github.com/sandeepmistry/arduino-LoRa/tree/master/examples/LoRaSimpleNode
-  * Ajustando para que entre em deepSleep assim que receber a hora do Gateway
-  * 02.02.21 - vendo se resolve o volta a receber com reset no1 PA0 ==> resolvido recebe ok a data e hora do gateway
-  * 05.02.21 - Ajustando para acordar do DS a cada 29min
-  * 10.02.21 - O TinyRTC está configurado e mostrando a hora corretamente.
-  * entrou em operação, a principio esta ok, Está em testes.
-  * 17.02.2021 logica para se nao receber a data do gateway depois de 2min entra e acorda a cada minuto do deep sleep
-  * 01.03.21 teste do IWatchdog
-  * 02.03.21 - Limpando o Sketch e reativando nos sensores para testes
-  *          - Definida a primeira versão de produçãoem testes nos sensores
-  * 23.09.21 - Ajustes finais antes do segundo envio para Caçador
-  * 04.10.21 - fica acorado no máximo 1h senão dorme por 24hs
-  * 29.10.2023 - Tentando resolver o problema do Sensor-01 de Caçador que não está atualizando os gráficos, parece que fica hibernando por 24hs.
-  *  Estava hibernando por 24hs, corrigi. À principio resolveu e o Sensor-01 que está com essa versão, voltou a funcionar.
-  *  O Sensor-02 está com outra versão: BPLTwR_04.10.2021-05-LSE
-  * 
-  * 23.11.2024  - Alterando o código para ler e hibernar por 1 minuto entre readings so ultrasom.
-  *             - 1min on e 1min off, ajustar para não ficar tanto tempo on e desligar assim que transmitir
-  * 24.11.2024  - alteramdo a função readUltrasonic() para trabalhar com a mediana
-  * 
-  * 24.12.2024  - Limpando e organizando o arquivo
-  * 
-  * TODO:
-  * se funcionar sem hibernação, ajustar a leitura do ultrassom pela mediana.
-  * reativar a hibernação e fazer dormir por 1min
-  * Precisa medir com a régua, para saber se está funcional
-  * 
+ * Alexandre Nuernbegr - alexandreberg@gmail.com
+ * 
+ * RFM95 LoRa Connection - STM32 Bluepill
+ *    VCC - 3.3V
+ *    GND - GND
+ *    SCK - SCK (PA5)
+ *    MISO - MISO (PA6)
+ *    MOSI - MOSI (PA7)
+ *    NSS - (PA4)
+ *    RESET - (PA0)
+ *    DIO0 - (PA1)
+ * 
+ * 23.11.2024 - Changing the code to read and hibernate for 1 minute between ultrasound readings.
+ *             - 1min on and 1min off, adjust to not stay on for so long and turn off as soon as it transmits
+ * 24.11.2024 - changing the readUltrasonic() function to work with the median
+ * 
+ * 24.12.2024 - Cleaning and organizing the file
+ * 
+ * TODO:
+ * reactivate hibernation and make it sleep for 1min
+ * 
 */  
 
+/*********************************************** Sensor Description ***********************************************/
+//REVIEWED
+#define sensor_id "Sensor_01"           // <<=== Sensor identification  ==>> CHANGE HERE!!
+#define sensor_location "Bridge_02"     // <<=== Sensor location        ==>> CHANGE HERE!!
 
 /*********************************************** Macro Definitions ***********************************************/
-//REVISADO
-#define ID "Sensor_01"          //<<=== Sensor identification ==>> CHANGE HERE!!
-
-//Enable or disable services and periferals
-#define enableSerialLog         //enable Serial debug on console
-#define enableWatchDog          //enable watchdog for deepsleep
-#define enableUltrasonic        //enable Ultrasonic Sensor
-#define enableRTCstm32          //using STM32 internal RTC Clock
-//#define enableTinyRTC         //TODO: not used because de SPI bus freezes and loose the connection!
-#define enableLoRa              //enable LoRa communication
+//REVIEWED
+//Enable (uncommenting) or disable (commenting out) services and periferals
+#define enableSerialLog         // enable Serial debug on console
+#define enableWatchDog          // enable watchdog for deepsleep
+#define enableUltrasonic        // enable Ultrasonic Sensor
+#define enableRTCstm32          // using STM32 internal RTC Clock
+//#define enableTinyRTC         // TODO: not used because de SPI bus freezes and loose the connection!
+#define enableLoRa              // enable LoRa communication
 
 /*********************************************** Library Definitions ***********************************************/
-//REVISADO
+//REVIEWED
 #include <Arduino.h>
 #include <stdlib.h>
 #include <STM32LowPower.h>      //Deep Sleep for STM32
+#include <SPI.h>
 
 #ifdef enableRTCstm32
   #include <STM32RTC.h>
 #endif
 
 #ifdef enableWatchDog
-  #include <IWatchdog.h>        //Enable watchdog for deep sleep mode
+  #include <IWatchdog.h>
 #endif
 
 #ifdef enableTinyRTC
-  #include "RTClib.h"           //Date and time functions using a DS1307 RTC connected via I2C and Wire lib
+  #include "RTClib.h"           //Date and time functions using a DS1307 RTC connected via I2C and Wire lib (Not used because it is loosing connection with the SPI BUS)
 #endif
-
 
 #ifdef enableUltrasonic
   #include <NewPing.h>
 #endif
 
 #ifdef enableLoRa
-  #include <SPI.h>
   #include <LoRa.h>
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-//REVISADO
+String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - mediana";
+
 #ifdef enableWatchDog
   const int ledPin = PB13;
 #endif
@@ -167,7 +144,6 @@ int goToSleep_flag = 0;         //flag to ender in deep sleep
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
-//REVISADO
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
 int compareReadings(const void *a, const void *b);
@@ -753,7 +729,7 @@ boolean runClockEvery(unsigned long interval)
 
   void sendReadings() {
     if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
-      LoRaMessage = String(ID) + "/" + String(readingDistance) + "&" + String(readingDistance);
+      LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
       #ifdef enableSerialLog
@@ -770,12 +746,12 @@ boolean runClockEvery(unsigned long interval)
 // Mostra dados do sketch e configura a serial
 void sketchSetup() {
   Serial.begin(115200); 
-  Serial.print("\nIniciando Sensor "); Serial.println(String(ID)); 
+  // Serial.print("\nStarting Sensor "); Serial.println(String(sensor_id)); 
+  Serial.print("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
     // Serial.println("\nIlha 3d");
-    // Serial.println("\n(48) 99852-6523");
     // Serial.println("\nwww.ilha3d.com");
     // Serial.println("\n");
-    Serial.println("System Version: SAPM_Sensor_BluePill_20241224-03 - mediana");
+    Serial.println(String (version));
     Serial.println("");
 }
 /*********************************************** End Function Definitions ********************************************/
