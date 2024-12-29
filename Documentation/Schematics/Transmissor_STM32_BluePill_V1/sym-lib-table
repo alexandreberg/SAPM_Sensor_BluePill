@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Transmissor_STM32_BluePill_V1-rescue")(type "KiCad")(uri "${KIPRJMOD}/Transmissor_STM32_BluePill_V1-rescue.kicad_sym")(options "")(descr ""))
+)
