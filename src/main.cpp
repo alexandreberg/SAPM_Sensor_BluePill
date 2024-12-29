@@ -30,6 +30,19 @@
  * TODO:
  * reactivate hibernation and make it sleep for 1min
  * 
+ * 
+BackupRegister Values:
+Register - Value - Description
+0 - 
+1 - 
+2 - != 0 - indicates that  STM32 should to go into deepsleep
+3 - != 0 -//indicates that  have to go into deepsleep
+
+goToSleep_flag = 0; i boot flag
+goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+goToSleep_flag = 2; //hibernation flag 1min ?????
+
+ * 
 */  
 
 /*********************************************** Sensor Description ***********************************************/
@@ -76,7 +89,7 @@
 
 /*********************************************** Global Variables ***********************************************/
 //REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20241228-01 - median";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20241229-01 - median";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -205,7 +218,6 @@ void setup() {
     enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
 
     if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
-
       Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
       setBackupRegister(2, 0);
       delay(100);
@@ -581,7 +593,7 @@ int compareReadings(const void *a, const void *b) {
 
   //==================================== Lora Callback void onReceive ===================================================
 void onReceive(int packetSize) {
-  onReceive_flag = 1;
+  onReceive_flag = 1;                     // Entered the function onReceive
   #ifdef enableSerialLog
     Serial.print("Pacote LoRa Recebido do Gateway: ");
   #endif
@@ -687,6 +699,7 @@ void onReceive(int packetSize) {
     LoRa_rxMode();
   }
 
+  //REVIEWED
   boolean runEvery(unsigned long interval)
   {
     static unsigned long previousMillis = 0;
@@ -699,13 +712,13 @@ void onReceive(int packetSize) {
     return false;
   }
 
-void checkonReceive() { //TODO ver se essa é a funçã oque recebe o retorno do gateway
+void checkonReceive() { //TODO ver se essa é a função que recebe o retorno do gateway
     if (onReceive_flag == 0) {
       int time = (rtc.getMinutes() - startUpMinute);
       Serial.print("time:   "); Serial.println(time);
       if (rtc.getMinutes() - startUpMinute >= 2 ) {
       //#ifdef enableSerialLog
-            Serial.print("Não recebeu a Data do Gateway! Vai dormir por 30 segundos ");
+            Serial.print("Did not receive the Date from the Gateway! Going to sleep for 30 seconds");
             delay (100);
           //#endif
           //vai dormir por 30 segundos...
@@ -768,14 +781,20 @@ boolean runClockEvery(unsigned long interval)
   } //end start_LoRa
 
   void sendReadings() {
-    if (runEvery(5000)) { // repeat every 5 sec //TODO se recebe confirmaçã ode recebiment odo gateway, não pode enviar mais para economizar bateria
+    if (runEvery(5000)) { // repeat every 5 sec 
+    //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
+
+      //TODO: Do I know it the receiver received the LoRa message? how?
       LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
+
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
+
       #ifdef enableSerialLog
         Serial.print("Sending packet N°: ");   Serial.println(readingID);
         Serial.print("LoRaMessage: ");   Serial.println(LoRaMessage);
       #endif
+
       readingID++;
     }
   }
