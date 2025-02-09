@@ -1,6 +1,8 @@
 /* Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
  * Alexandre Nuernbegr - alexandreberg@gmail.com
  * 
+ * Code available on: https://github.com/alexandreberg/SAPM_Sensor_BluePill
+ * 
  * RFM95 LoRa Connection - STM32 Bluepill
  *    VCC - 3.3V
  *    GND - GND
