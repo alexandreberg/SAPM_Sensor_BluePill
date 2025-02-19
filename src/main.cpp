@@ -47,6 +47,7 @@
  * - Testing power consumption (12 feb 2025)
  * OK - implementing sleep in LoRa module (14 feb 2025)
  * OK - Changing clock source from LSE_CLOCK to LSI_CLOCK
+ * OK - Disabling BackupRegisters
  * 
  */  
 
@@ -217,34 +218,34 @@ void goToSleep();
 // TODO: Need to be better documented and clarified!!!!
 void setup() {
   sketchSetup();                      // Setup of the Serial log and initial serial setup
-  pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
+  // pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
   
-  #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
-    enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
+  // #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
+    // enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
 
-    if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
-      Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
-      setBackupRegister(2, 0);
-      delay(100);
+    // if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
+      // Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
+      // setBackupRegister(2, 0);
+      // delay(100);
       setupRTC();
       LowPower.begin();
-      goToSleep_flag = 2; //hibernation flag 1min ?????
-      goToSleep();    
-    }
+      // goToSleep_flag = 2; //hibernation flag 1min ?????
+      // goToSleep();    
+    // }
 
-    if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
-      Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
-      setupRTC();
-      enableBackupDomain();
-      setBackupRegister(3, 0);
-      delay(100);
-      LowPower.begin();
-      goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
-      goToSleep();
-    }
-    disableBackupDomain();
-    IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
-  #endif
+    // // if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
+    //   Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
+    //   setupRTC();
+    //   // enableBackupDomain();
+    //   // setBackupRegister(3, 0);
+    //   // delay(100);
+    //   LowPower.begin();
+    //   goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+    //   goToSleep();
+    // }
+    // disableBackupDomain();
+    // IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
+  // #endif
 
   // Enable the LoRa power supply activating the enable pin of the PS (Not used in this project)
   // pinMode(PB13,OUTPUT); 
@@ -279,9 +280,9 @@ void loop() {
 
   if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
     goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
-    enableBackupDomain();
-    setBackupRegister(2, 10); 
-    disableBackupDomain();
+    // enableBackupDomain();
+    // setBackupRegister(2, 10); 
+    // disableBackupDomain();
   }
   goToSleep();
   //checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
