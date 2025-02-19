@@ -1,5 +1,8 @@
-/* Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
- * Alexandre Nuernbegr - alexandreberg@gmail.com
+/* Code for Sensor-02:
+ * Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
+ * Alexandre Nuernberg - alexandreberg@gmail.com
+ * 
+ * Project available on: https://github.com/alexandreberg/SAPM_Sensor_BluePill
  * 
  * RFM95 LoRa Connection - STM32 Bluepill
  *    VCC - 3.3V
@@ -24,31 +27,33 @@
  * 23.11.2024 - Changing the code to read and hibernate for 1 minute between ultrasound readings.
  *             - 1min on and 1min off, adjust to not stay on for so long and turn off as soon as it transmits
  * 24.11.2024 - changing the readUltrasonic() function to work with the median
- * 
  * 24.12.2024 - Cleaning and organizing the file
+ * 09.feb.2025 - changing code from if (readingDistance > 500 || readingDistance < 0) { to:
+ *              if (readingDistance > 500 || readingDistance <= 0) {  to see if eliminates de zero value readings in the gateway.
+ * 
+ * BackupRegister Values:
+ * Register - Value - Description
+ * 0 - 
+ * 1 - 
+ * 2 - != 0 - indicates that  STM32 should to go into deepsleep
+ * 3 - != 0 -//indicates that  have to go into deepsleep
+ *
+ * goToSleep_flag = 0; i boot flag
+ * goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+ * goToSleep_flag = 2; //hibernation flag 1min ?????
  * 
  * TODO:
  * reactivate hibernation and make it sleep for 1min
+ * - Testing power consumption (12 feb 2025)
+ * OK - implementing sleep in LoRa module (14 feb 2025)
+ * OK - Changing clock source from LSE_CLOCK to LSI_CLOCK
  * 
- * 
-BackupRegister Values:
-Register - Value - Description
-0 - 
-1 - 
-2 - != 0 - indicates that  STM32 should to go into deepsleep
-3 - != 0 -//indicates that  have to go into deepsleep
-
-goToSleep_flag = 0; i boot flag
-goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
-goToSleep_flag = 2; //hibernation flag 1min ?????
-
- * 
-*/  
+ */  
 
 /*********************************************** Sensor Description ***********************************************/
 //REVIEWED
-#define sensor_id "Sensor_01"           // <<=== Sensor identification  ==>> CHANGE HERE!!
-#define sensor_location "Bridge_02"     // <<=== Sensor location        ==>> CHANGE HERE!!
+#define sensor_id "Sensor_02"         // <<=== Sensor identification  ==>> CHANGE HERE!!
+#define sensor_location "Lab"         // <<=== Sensor location        ==>> CHANGE HERE!!
 
 /*********************************************** Macro Definitions ***********************************************/
 //REVIEWED
@@ -89,7 +94,7 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 
 /*********************************************** Global Variables ***********************************************/
 //REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20241229-01 - median";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20250218-01 - median - LoRa Sleep - LSI_CLOCK";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -241,35 +246,36 @@ void setup() {
     IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
   #endif
 
-  //Enable the LoRa power supply
-  pinMode(PB13,OUTPUT); 
-  digitalWrite(PB13, HIGH); 
-  
-  delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
+  // Enable the LoRa power supply activating the enable pin of the PS (Not used in this project)
+  // pinMode(PB13,OUTPUT); 
+  // digitalWrite(PB13, HIGH); 
+  // delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
 
   LowPower.begin(); //STM32 deep sleep
 
   #ifdef enableRTCstm32
     setupRTC();
-    setTime();
-    startUpMinute = rtc.getMinutes();
+    // setTime(); // Not used in this project
+    // startUpMinute = rtc.getMinutes(); // Not used in this project
   #endif
 
   #ifdef enableTinyRTC
-    startTinyRTC();
+    startTinyRTC(); // Not used in this project
     //setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
   #endif
 
-  ultrasonic_setup();
-  start_LoRa();
+  // TODO: 
+  // ultrasonic_setup();
+  // start_LoRa();
   
-  //readTimeTinyRTC();
+  //readTimeTinyRTC();  // Not used in this project
 }
 
 /*********************************************** loop () ***********************************************/
 void loop() {
-  readUltrasonic();
-  sendReadings();
+  // TODO: 
+  // readUltrasonic();
+  // sendReadings();
 
   if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
     goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
@@ -283,6 +289,11 @@ void loop() {
   #ifdef enableWatchDog
     IWatchdog.reload();
   #endif
+
+  Serial.println("Em loop...");
+  readTime();
+  
+  delay(1000);
 }
 
 /*********************************************** End loop () ***********************************************/
@@ -368,8 +379,8 @@ void startTinyRTC() {
 void setupRTC(){
       // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
       // By default the LSI is selected as source.
-      //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
-      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
+      rtc.setClockSource(STM32RTC::LSI_CLOCK); 
+      // rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
       rtc.begin(); // initialize RTC 24H format
   }  
 
@@ -535,24 +546,37 @@ int compareReadings(const void *a, const void *b) {
 
 //////////////////////////////////////////////////// goToSleep() //////////////////////////////////////////////////// 
  void goToSleep() {
-    if (goToSleep_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
+    if (goToSleep_flag == 2) 
+    { 
+      //Não encontrou o gateway e hibernará por 1 minuto
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
       // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
       Serial.println("Hibernando por 1 minuto..."); 
+
+      // TODO:
+      // LoRa.sleep(); //Puts LoRa chip in sleep mode
+      // Serial.println("Módulo LoRa em modo de hibernação.");
+
       delay (10);
-      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
-    }
-    //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
-    if (goToSleep_flag == 1) {
+    } // end if
+
+    // TODO: excluir
+    // Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
+    if (goToSleep_flag == 1) 
+    {
     //   //DateTime now = rtc.now();
     //   //int sleepTime = 59 - now.minute(); //TinyRTC
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
       Serial.println("Hibernando por 1 minuto..."); 
+
+      // LoRa.sleep(); //Puts LoRa chip in sleep mode
+      // Serial.println("Módulo LoRa em modo de hibernação.");
+
       delay (10);
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
     //   int sleepTime = 59 - rtc.getMinutes(); //STM32RTC
@@ -576,7 +600,7 @@ int compareReadings(const void *a, const void *b) {
     //     LowPower.shutdown(1000 * 60 *sleepTime); //D.S por 1000ms* 60s * sleepTime/
     //   }
 
-    }
+    } // end if
  
  }
 
