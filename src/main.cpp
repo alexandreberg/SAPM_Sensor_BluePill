@@ -44,10 +44,14 @@
  * 
  * TODO:
  * reactivate hibernation and make it sleep for 1min
- * - Testing power consumption (12 feb 2025)
  * OK - implementing sleep in LoRa module (14 feb 2025)
  * OK - Changing clock source from LSE_CLOCK to LSI_CLOCK
  * OK - Disabling BackupRegisters
+ * - Reactivate IWatchdog 
+ * - Restart ultrssonic and lora modules
+ * - Test power consumption
+ * - See if do i need backup registers to work with the watchdog
+ * - Takes too much time to send the LoRa packets (it repeats many times the ultrasonic reading cycle, change to send the LoRa message as soon sa take the 1st US reading)
  * 
  */  
 
@@ -95,7 +99,7 @@
 
 /*********************************************** Global Variables ***********************************************/
 //REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20250218-01 - median - LoRa Sleep - LSI_CLOCK";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20250218-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -174,8 +178,6 @@ int goToSleep_flag = 0;         // Flag to enter in deep sleep mode
 /*********************************************** Function Prototypes ***********************************************/
 //REVIEWED
 void sketchSetup();
-
-
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
 int compareReadings(const void *a, const void *b);
@@ -227,8 +229,8 @@ void setup() {
       // Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
       // setBackupRegister(2, 0);
       // delay(100);
-      setupRTC();
-      LowPower.begin();
+      // setupRTC();
+      // LowPower.begin();
       // goToSleep_flag = 2; //hibernation flag 1min ?????
       // goToSleep();    
     // }
@@ -265,9 +267,8 @@ void setup() {
     //setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
   #endif
 
-  // TODO: 
-  // ultrasonic_setup();
-  // start_LoRa();
+  ultrasonic_setup();
+  start_LoRa();
   
   //readTimeTinyRTC();  // Not used in this project
 }
@@ -275,15 +276,15 @@ void setup() {
 /*********************************************** loop () ***********************************************/
 void loop() {
   // TODO: 
-  // readUltrasonic();
-  // sendReadings();
+  readUltrasonic();
+  sendReadings();
 
-  if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
-    goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
-    // enableBackupDomain();
-    // setBackupRegister(2, 10); 
-    // disableBackupDomain();
-  }
+  // if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
+  //   goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
+  //   // enableBackupDomain();
+  //   // setBackupRegister(2, 10); 
+  //   // disableBackupDomain();
+  // }
   goToSleep();
   //checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
   // delay(60000); //faz uma leitura por minuto
@@ -475,7 +476,7 @@ void readUltrasonic() {
       readingDistance = pulseLength / 58;   // Measured distance in centimeters
       delay(50);
 
-      if (readingDistance > 500 || readingDistance < 0) { //eliminate erroneous readings above or below the sensor range
+      if (readingDistance > 500 || readingDistance < 0) { //TODO: check zero case. Eliminate erroneous readings above or below the sensor range
         goto check_distance;
       }
     // } //for2
@@ -494,9 +495,8 @@ void readUltrasonic() {
 
     #ifdef enableSerialLog
       Serial.println("Distance Read by the Ultrasonic Sensor (median): " + String(median) + "cm");
-      // Serial.print(median); 
-      // Serial.println("cm");
-      // Serial.println("");
+      readingDistance = median; // Prepare to send the value over LoRa
+
     #endif
   // }
 
@@ -557,8 +557,8 @@ int compareReadings(const void *a, const void *b) {
       Serial.println("Hibernando por 1 minuto..."); 
 
       // TODO:
-      // LoRa.sleep(); //Puts LoRa chip in sleep mode
-      // Serial.println("Módulo LoRa em modo de hibernação.");
+      LoRa.sleep(); //Puts LoRa chip in sleep mode
+      Serial.println("Módulo LoRa em modo de hibernação.");
 
       delay (10);
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
@@ -806,12 +806,12 @@ boolean runClockEvery(unsigned long interval)
   } //end start_LoRa
 
   void sendReadings() {
-    if (runEvery(5000)) { // repeat every 5 sec 
+    // if (runEvery(5000)) { // repeat every 5 sec 
+    if (runEvery(1000)) { // repeat every 1 sec 
     //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
 
       //TODO: Do I know it the receiver received the LoRa message? how?
       LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
-
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
 
@@ -821,6 +821,7 @@ boolean runClockEvery(unsigned long interval)
       #endif
 
       readingID++;
+      goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
     }
   }
 
