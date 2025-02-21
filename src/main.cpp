@@ -48,7 +48,7 @@
  * OK - Changing clock source from LSE_CLOCK to LSI_CLOCK
  * OK - Disabling BackupRegisters
  * - Reactivate IWatchdog 
- * - Restart ultrssonic and lora modules
+ * - Restart ultrassonic and lora modules
  * - Test power consumption
  * - See if do i need backup registers to work with the watchdog
  * - Takes too much time to send the LoRa packets (it repeats many times the ultrasonic reading cycle, change to send the LoRa message as soon sa take the 1st US reading)
@@ -99,7 +99,7 @@
 
 /*********************************************** Global Variables ***********************************************/
 //REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20250218-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20250220-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -177,6 +177,7 @@ int goToSleep_flag = 0;         // Flag to enter in deep sleep mode
 
 /*********************************************** Function Prototypes ***********************************************/
 //REVIEWED
+void activate_power_monitor_pins();
 void sketchSetup();
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
@@ -219,7 +220,10 @@ void goToSleep();
 /*********************************************** End Function Prototypes *******************************************/
 // TODO: Need to be better documented and clarified!!!!
 void setup() {
+  activate_power_monitor_pins();      // Activate logic ppins to measure power consumption
   sketchSetup();                      // Setup of the Serial log and initial serial setup
+  
+
   // pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
   
   // #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
@@ -413,6 +417,8 @@ void setupRTC(){
   //REVIEWED
   // Ultrasonic Distance Sensor setup
   void ultrasonic_setup(){
+    digitalWrite(PB12, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+    Serial.println("Power monitor D7 - PB12 = 0 Func: ultrasonic_setup()");
     pinMode(triggerPin, OUTPUT);
     pinMode(echoPin, INPUT);  
     #ifdef enableSerialLog
@@ -457,6 +463,8 @@ void setupRTC(){
 // Function adapted to calculate the median of 11 readings from the ultrasonic sensor and display it as the read distance
 //REVIEWED
 void readUltrasonic() {
+  digitalWrite(PB13, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+  Serial.println("Power monitor - D6 - PB13 = 0 Func. readUltrasonic()");
   int readings[11];                           // 11 readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]); 
 
@@ -557,8 +565,11 @@ int compareReadings(const void *a, const void *b) {
       Serial.println("Hibernando por 1 minuto..."); 
 
       // TODO:
+      LoRa.end(); // Ends Lora
+      Serial.println("Módulo LoRa Finalizado: LoRa.end()");
+
       LoRa.sleep(); //Puts LoRa chip in sleep mode
-      Serial.println("Módulo LoRa em modo de hibernação.");
+      Serial.println("Módulo LoRa em modo de hibernação: LoRa.sleep()");
 
       delay (10);
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
@@ -768,6 +779,8 @@ boolean runClockEvery(unsigned long interval)
   //Initialize LoRa module
   //REVIEWED
   void start_LoRa(){
+    digitalWrite(PB14, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+    Serial.println("Power monitor - D5 - PB14 = 0 Func. start_LoRa()");
     //LoRa.setTxPower(20);    // Change transmission power
     
     LoRa.setPins(csPin, resetPin, irqPin);    //SPI LoRa pins
@@ -810,6 +823,9 @@ boolean runClockEvery(unsigned long interval)
     if (runEvery(1000)) { // repeat every 1 sec 
     //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
 
+      digitalWrite(PB15, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+      Serial.println("Power monitor - D4 - PB15 = 0 Func: sendReadings()");
+
       //TODO: Do I know it the receiver received the LoRa message? how?
       LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
       //Send LoRa packet to receiver
@@ -827,4 +843,19 @@ boolean runClockEvery(unsigned long interval)
 
 #endif //enableLoRa
 
+void activate_power_monitor_pins()
+{
+  pinMode (PB12, OUTPUT);
+  pinMode (PB13, OUTPUT);
+  pinMode (PB14, OUTPUT);
+  pinMode (PB15, OUTPUT);
+  digitalWrite(PB12, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+  // Serial.println("Power monitor - PB12 = 1");
+  digitalWrite(PB13, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+  // Serial.println("Power monitor - PB13 = 1");
+  digitalWrite(PB14, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+  // Serial.println("Power monitor - PB15 = 1");
+  digitalWrite(PB15, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
+  // Serial.println("Power monitor - PB15 = 1");
+} //end activate_power_monitor_pins
 /*********************************************** End Function Definitions ********************************************/
