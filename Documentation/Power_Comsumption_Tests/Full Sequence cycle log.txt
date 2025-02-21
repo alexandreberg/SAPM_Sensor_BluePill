@@ -1,0 +1,94 @@
+Full Sequence cycle log:
+
+
+```
+Starting Sensor: Sensor_02 on Lab
+Ilha 3d
+
+
+www.ilha3d.com
+
+
+
+
+System Version: SAPM_Sensor_BluePill_20250218-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters
+
+
+
+Setting up Ultrasonic Sensor.
+
+LoRa initialization OK!
+
+LoRa Receiver Callback with LoRa Reset in PA0
+
+LoRa Simple Node
+
+Only receive messages from gateways
+
+Tx: invertIQ disable
+
+Rx: invertIQ enable
+
+
+
+ultrasonic_readings_array_size = 11
+
+readings-0 = 0
+
+readings-1 = 0
+
+readings-2 = 0
+
+readings-3 = 0
+
+readings-4 = 0
+
+readings-5 = 0
+
+readings-6 = 0
+
+readings-7 = 0
+
+readings-8 = 0
+
+readings-9 = 0
+
+readings-10 = 0
+
+Sorted distance readings:
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+
+
+
+Distance Read by the Ultrasonic Sensor (median): 0.00cm
+
+Sending packet N°: 0
+
+LoRaMessage: Sensor_02/0&0
+
+Hibernando por 1 minuto...
+
+Módulo LoRa em modo de hibernação.
+```

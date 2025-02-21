@@ -1,0 +1,201 @@
+
+Starting Sensor: Sensor_02 on Lab
+Ilha 3d
+
+
+www.ilha3d.com
+
+
+
+
+System Version: SAPM_Sensor_BluePill_20250220-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters
+
+
+
+Power monitor D7 - PB12 = 0 Func: ultrasonic_setup()
+
+Setting up Ultrasonic Sensor.
+
+Power monitor - D5 - PB14 = 0 Func. start_LoRa()
+
+LoRa initialization OK!
+
+LoRa Receiver Callback with LoRa Reset in PA0
+
+LoRa Simple Node
+
+Only receive messages from gateways
+
+Tx: invertIQ disable
+
+Rx: invertIQ enable
+
+
+
+Power monitor - D6 - PB13 = 0 Func. readUltrasonic()
+
+ultrasonic_readings_array_size = 11
+
+readings-0 = 5
+
+readings-1 = 243
+
+readings-2 = 243
+
+readings-3 = 243
+
+readings-4 = 243
+
+readings-5 = 243
+
+readings-6 = 243
+
+readings-7 = 243
+
+readings-8 = 243
+
+readings-9 = 243
+
+readings-10 = 243
+
+Sorted distance readings:
+
+5
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+
+
+
+Distance Read by the Ultrasonic Sensor (median): 243.00cm
+
+Power monitor - D4 - PB15 = 0 Func: sendReadings()
+
+Sending packet N°: 0
+
+LoRaMessage: Sensor_02/243&243
+
+Hibernando por 1 minuto...
+
+Módulo LoRa Finalizado: LoRa.end()
+
+Módulo LoRa em modo de hibernação: LoRa.sleep()
+
+
+Starting Sensor: Sensor_02 on Lab
+Ilha 3d
+
+
+www.ilha3d.com
+
+
+
+
+System Version: SAPM_Sensor_BluePill_20250220-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters
+
+
+
+Power monitor D7 - PB12 = 0 Func: ultrasonic_setup()
+
+Setting up Ultrasonic Sensor.
+
+Power monitor - D5 - PB14 = 0 Func. start_LoRa()
+
+LoRa initialization OK!
+
+LoRa Receiver Callback with LoRa Reset in PA0
+
+LoRa Simple Node
+
+Only receive messages from gateways
+
+Tx: invertIQ disable
+
+Rx: invertIQ enable
+
+
+
+Power monitor - D6 - PB13 = 0 Func. readUltrasonic()
+
+ultrasonic_readings_array_size = 11
+
+readings-0 = 0
+
+readings-1 = 243
+
+readings-2 = 243
+
+readings-3 = 243
+
+readings-4 = 243
+
+readings-5 = 243
+
+readings-6 = 243
+
+readings-7 = 243
+
+readings-8 = 243
+
+readings-9 = 243
+
+readings-10 = 243
+
+Sorted distance readings:
+
+0
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+243
+
+
+
+
+Distance Read by the Ultrasonic Sensor (median): 243.00cm
+
+Power monitor - D4 - PB15 = 0 Func: sendReadings()
+
+Sending packet N°: 0
+
+LoRaMessage: Sensor_02/243&243
+
+Hibernando por 1 minuto...
+
+Módulo LoRa Finalizado: LoRa.end()
+
+Módulo LoRa em modo de hibernação: LoRa.sleep()
