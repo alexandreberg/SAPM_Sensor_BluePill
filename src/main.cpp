@@ -1,8 +1,10 @@
-/* Code for Sensor-02:
- * Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
+/* Blue_Pill_Lora_Transmitter_with_RFM95_BPLTwR_23.09.2021-01
+ * 27/07/2025
+ * Código do sensor-02 que ficará na pronte da régua linimétrica.
+ * 
  * Alexandre Nuernberg - alexandreberg@gmail.com
  * 
- * Project available on: https://github.com/alexandreberg/SAPM_Sensor_BluePill
+ * Code available on: https://github.com/alexandreberg/SAPM_Sensor_BluePill
  * 
  * RFM95 LoRa Connection - STM32 Bluepill
  *    VCC - 3.3V
@@ -28,40 +30,30 @@
  *             - 1min on and 1min off, adjust to not stay on for so long and turn off as soon as it transmits
  * 24.11.2024 - changing the readUltrasonic() function to work with the median
  * 24.12.2024 - Cleaning and organizing the file
- * 09.feb.2025 - changing code from if (readingDistance > 500 || readingDistance < 0) { to:
- *              if (readingDistance > 500 || readingDistance <= 0) {  to see if eliminates de zero value readings in the gateway.
- * 
- * BackupRegister Values:
- * Register - Value - Description
- * 0 - 
- * 1 - 
- * 2 - != 0 - indicates that  STM32 should to go into deepsleep
- * 3 - != 0 -//indicates that  have to go into deepsleep
- *
- * goToSleep_flag = 0; i boot flag
- * goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
- * goToSleep_flag = 2; //hibernation flag 1min ?????
  * 
  * TODO:
  * reactivate hibernation and make it sleep for 1min
- * OK - implementing sleep in LoRa module (14 feb 2025)
- * OK - Changing clock source from LSE_CLOCK to LSI_CLOCK
- * OK - Disabling BackupRegisters
- * - Reactivate IWatchdog 
- * - Restart ultrassonic and lora modules
- * - Test power consumption
- * - See if do i need backup registers to work with the watchdog
- * - Takes too much time to send the LoRa packets (it repeats many times the ultrasonic reading cycle, change to send the LoRa message as soon sa take the 1st US reading)
  * 
- */  
+ * 
+BackupRegister Values:
+Register - Value - Description
+0 - 
+1 - 
+2 - != 0 - indicates that  STM32 should to go into deepsleep
+3 - != 0 -//indicates that  have to go into deepsleep
+
+goToSleep_flag = 0; i boot flag
+goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+goToSleep_flag = 2; //hibernation flag 1min ?????
+
+ * 27.07.2025 - Migrating for sensor-02 and optimizing
+*/  
 
 /*********************************************** Sensor Description ***********************************************/
-//REVIEWED
-#define sensor_id "Sensor_02"         // <<=== Sensor identification  ==>> CHANGE HERE!!
-#define sensor_location "Lab"         // <<=== Sensor location        ==>> CHANGE HERE!!
+#define sensor_id "Station_02"           // <<=== Station identification  ==>> CHANGE HERE!!
+#define sensor_location "Bridge_01"     // <<=== Sensor location        ==>> CHANGE HERE!!
 
 /*********************************************** Macro Definitions ***********************************************/
-//REVIEWED
 //Enable (uncommenting) or disable (commenting out) services and periferals
 #define enableSerialLog         // enable Serial debug on console
 #define enableWatchDog          // enable watchdog for deepsleep
@@ -71,7 +63,6 @@
 #define enableLoRa              // enable LoRa communication
 
 /*********************************************** Library Definitions ***********************************************/
-//REVIEWED
 #include <Arduino.h>
 #include <stdlib.h>
 #include <STM32LowPower.h>      //Deep Sleep for STM32
@@ -98,8 +89,7 @@
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-//REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20250220-01 - median - LoRa Sleep - LSI_CLOCK - no BackupRegisters";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPI_Station_BluePill_20250727-01";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -145,6 +135,8 @@ String version = "System Version: SAPM_Sensor_BluePill_20250220-01 - median - Lo
   // long lastEchoDistance = 0;             // We want to keep these values after reset
   unsigned long pulseLength = 0;
   unsigned long readingDistance = 0;        // Measured distance in centimeters
+  unsigned long minDistanceReading = 0.00;  // Minimal and maximal distances considered to be valid for readings im 'cm'
+  unsigned long maxDistanceReading = 500.00;
   // unsigned long maxReadingNumber = 0;    // Number of ultrasonic readings to do the calculation of mean and average
   // boolean ultrasonicActive  = true;
 #endif //enableUltrasonic
@@ -171,17 +163,15 @@ int goToSleep_flag = 0;         // Flag to enter in deep sleep mode
 
   int lora_startup_counter = 0;     // Counter to check if LoRa chip started communication propperly
   long readingID = 0;               // Sending packet N°
-  
   String LoRaMessage = "";          // String to store the LoRa Message that should be sent
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
-//REVIEWED
-void activate_power_monitor_pins();
 void sketchSetup();
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
 int compareReadings(const void *a, const void *b);
+void goToSleep();
 
 #ifdef enableTinyRTC
   //void startTinyRTC();
@@ -215,98 +205,87 @@ int compareReadings(const void *a, const void *b);
   void sendReadings();
 #endif //enableLoRa
 
-void goToSleep();
-
 /*********************************************** End Function Prototypes *******************************************/
 // TODO: Need to be better documented and clarified!!!!
 void setup() {
-  activate_power_monitor_pins();      // Activate logic ppins to measure power consumption
   sketchSetup();                      // Setup of the Serial log and initial serial setup
+  pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
   
+  #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
+    enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
 
-  // pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
+    if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
+      Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
+      setBackupRegister(2, 0);
+      delay(100);
+      setupRTC();
+      LowPower.begin();
+      goToSleep_flag = 2; //hibernation flag 1min ?????
+      goToSleep();    
+    }
+
+    if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
+      Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
+      setupRTC();
+      enableBackupDomain();
+      setBackupRegister(3, 0);
+      delay(100);
+      LowPower.begin();
+      goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+      goToSleep();
+    }
+    disableBackupDomain();
+    IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
+  #endif
+
+  //Enable the LoRa power supply
+  pinMode(PB13,OUTPUT); 
+  digitalWrite(PB13, HIGH); 
   
-  // #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
-    // enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
-
-    // if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
-      // Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
-      // setBackupRegister(2, 0);
-      // delay(100);
-      // setupRTC();
-      // LowPower.begin();
-      // goToSleep_flag = 2; //hibernation flag 1min ?????
-      // goToSleep();    
-    // }
-
-    // // if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
-    //   Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
-    //   setupRTC();
-    //   // enableBackupDomain();
-    //   // setBackupRegister(3, 0);
-    //   // delay(100);
-    //   LowPower.begin();
-    //   goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
-    //   goToSleep();
-    // }
-    // disableBackupDomain();
-    // IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
-  // #endif
-
-  // Enable the LoRa power supply activating the enable pin of the PS (Not used in this project)
-  // pinMode(PB13,OUTPUT); 
-  // digitalWrite(PB13, HIGH); 
-  // delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
+  delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
 
   LowPower.begin(); //STM32 deep sleep
 
   #ifdef enableRTCstm32
     setupRTC();
-    // setTime(); // Not used in this project
-    // startUpMinute = rtc.getMinutes(); // Not used in this project
+    setTime();
+    startUpMinute = rtc.getMinutes();
   #endif
 
   #ifdef enableTinyRTC
-    startTinyRTC(); // Not used in this project
+    startTinyRTC();
     //setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
   #endif
 
   ultrasonic_setup();
   start_LoRa();
   
-  //readTimeTinyRTC();  // Not used in this project
+  //readTimeTinyRTC();
 }
 
 /*********************************************** loop () ***********************************************/
 void loop() {
-  // TODO: 
   readUltrasonic();
   sendReadings();
 
-  // if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
-  //   goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
-  //   // enableBackupDomain();
-  //   // setBackupRegister(2, 10); 
-  //   // disableBackupDomain();
-  // }
+  if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
+    goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
+    enableBackupDomain();
+    setBackupRegister(2, 10); 
+    disableBackupDomain();
+  }
   goToSleep();
   //checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
   // delay(60000); //faz uma leitura por minuto
   #ifdef enableWatchDog
     IWatchdog.reload();
   #endif
-
-  Serial.println("Em loop...");
-  readTime();
-  
-  delay(1000);
 }
 
 /*********************************************** End loop () ***********************************************/
 
 /*********************************************** Function Definitions ***********************************************/
 //////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
-//REVIEWED
 // Shows system infomation and configures serial interface
 void sketchSetup() {
   Serial.begin(115200); 
@@ -385,8 +364,8 @@ void startTinyRTC() {
 void setupRTC(){
       // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
       // By default the LSI is selected as source.
-      rtc.setClockSource(STM32RTC::LSI_CLOCK); 
-      // rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
+      //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
+      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
       rtc.begin(); // initialize RTC 24H format
   }  
 
@@ -414,11 +393,8 @@ void setupRTC(){
 #endif //enableRTCstm32
 
 #ifdef enableUltrasonic
-  //REVIEWED
   // Ultrasonic Distance Sensor setup
   void ultrasonic_setup(){
-    digitalWrite(PB12, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-    Serial.println("Power monitor D7 - PB12 = 0 Func: ultrasonic_setup()");
     pinMode(triggerPin, OUTPUT);
     pinMode(echoPin, INPUT);  
     #ifdef enableSerialLog
@@ -426,45 +402,8 @@ void setupRTC(){
     #endif
   } //end ultrasonic_setup
 
-//   void readUltrasonic() { //Meu código original
-//     // ===== Sensor Ultrasonic =====
-
-//     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
-//         check_distance: //Label para goto
-//         for (int i=0  ; i < 3; i++) {
-//             digitalWrite(triggerPin, LOW);                    // send low to get a clean pulse     
-//             delayMicroseconds(5);                          // let it settle
-//             digitalWrite(triggerPin, HIGH);                   // send high to trigger device
-//             delayMicroseconds(10);                         // let it settle
-//             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
-//             readingDistance = pulseLength / 58;             // calculate distance (cm)
-//             Serial.print("readingDistance: "); Serial.println(readingDistance);
-//             delay(50);
-
-//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por maxReadingNumber para evitar loop infinito
-//             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta readings maiores que 500cm
-//               maxReadingNumber = maxReadingNumber + 1;
-//               goto check_distance;
-//             }//if readingDistance
-//         } //for
-
-//         if ((readingDistance - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
-//             lastEchoDistance = readingDistance;
-//             //#ifdef enableSerialLog
-//               Serial.print("Distancia Lida pelo Sensor Ultrasonico: ");
-//               Serial.print(readingDistance); Serial.println("cm");
-//               Serial.println("");
-//             //#endif
-//             delay(50);
-//         } //if
-//       delay(500); 
-//       }
-
 // Function adapted to calculate the median of 11 readings from the ultrasonic sensor and display it as the read distance
-//REVIEWED
 void readUltrasonic() {
-  digitalWrite(PB13, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-  Serial.println("Power monitor - D6 - PB13 = 0 Func. readUltrasonic()");
   int readings[11];                           // 11 readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]); 
 
@@ -484,7 +423,7 @@ void readUltrasonic() {
       readingDistance = pulseLength / 58;   // Measured distance in centimeters
       delay(50);
 
-      if (readingDistance > 500 || readingDistance < 0) { //TODO: check zero case. Eliminate erroneous readings above or below the sensor range
+      if (readingDistance > maxDistanceReading || readingDistance < minDistanceReading) { //eliminate erroneous readings above or below the sensor range
         goto check_distance;
       }
     // } //for2
@@ -503,29 +442,11 @@ void readUltrasonic() {
 
     #ifdef enableSerialLog
       Serial.println("Distance Read by the Ultrasonic Sensor (median): " + String(median) + "cm");
-      readingDistance = median; // Prepare to send the value over LoRa
-
     #endif
   // }
 
   delay(50); //para economizar bateria, pode-se reduzir esse tempo
 }
-
-// // Função para calcular a median
-// float calculateMedian(int *array, int arraySize) {
-//   qsort(array, arraySize, sizeof(int), compareReadings);
-
-//   if (arraySize % 2 == 0) {
-//     return (float)(array[arraySize / 2 - 1] + array[arraySize / 2]) / 2;
-//   } else {
-//     return (float)array[arraySize / 2];
-    
-//   }
-// }
-
-// int compareReadings(const void *a, const void *b) {
-//   return (*(int *)a - *(int *)b);
-// }
 
 // Function to calculate the median
 // TODO: improve commenting
@@ -555,40 +476,24 @@ int compareReadings(const void *a, const void *b) {
 
 //////////////////////////////////////////////////// goToSleep() //////////////////////////////////////////////////// 
  void goToSleep() {
-    if (goToSleep_flag == 2) 
-    { 
-      //Não encontrou o gateway e hibernará por 1 minuto
+    if (goToSleep_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
       // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
       Serial.println("Hibernando por 1 minuto..."); 
-
-      // TODO:
-      LoRa.end(); // Ends Lora
-      Serial.println("Módulo LoRa Finalizado: LoRa.end()");
-
-      LoRa.sleep(); //Puts LoRa chip in sleep mode
-      Serial.println("Módulo LoRa em modo de hibernação: LoRa.sleep()");
-
       delay (10);
+      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
-    } // end if
-
-    // TODO: excluir
-    // Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
-    if (goToSleep_flag == 1) 
-    {
+    }
+    //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
+    if (goToSleep_flag == 1) {
     //   //DateTime now = rtc.now();
     //   //int sleepTime = 59 - now.minute(); //TinyRTC
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
       Serial.println("Hibernando por 1 minuto..."); 
-
-      // LoRa.sleep(); //Puts LoRa chip in sleep mode
-      // Serial.println("Módulo LoRa em modo de hibernação.");
-
       delay (10);
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
     //   int sleepTime = 59 - rtc.getMinutes(); //STM32RTC
@@ -612,7 +517,7 @@ int compareReadings(const void *a, const void *b) {
     //     LowPower.shutdown(1000 * 60 *sleepTime); //D.S por 1000ms* 60s * sleepTime/
     //   }
 
-    } // end if
+    }
  
  }
 
@@ -735,7 +640,6 @@ void onReceive(int packetSize) {
     LoRa_rxMode();
   }
 
-  //REVIEWED
   boolean runEvery(unsigned long interval)
   {
     static unsigned long previousMillis = 0;
@@ -777,10 +681,7 @@ boolean runClockEvery(unsigned long interval)
 
   //=============================================================================================================
   //Initialize LoRa module
-  //REVIEWED
   void start_LoRa(){
-    digitalWrite(PB14, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-    Serial.println("Power monitor - D5 - PB14 = 0 Func. start_LoRa()");
     //LoRa.setTxPower(20);    // Change transmission power
     
     LoRa.setPins(csPin, resetPin, irqPin);    //SPI LoRa pins
@@ -819,15 +720,12 @@ boolean runClockEvery(unsigned long interval)
   } //end start_LoRa
 
   void sendReadings() {
-    // if (runEvery(5000)) { // repeat every 5 sec 
-    if (runEvery(1000)) { // repeat every 1 sec 
+    if (runEvery(5000)) { // repeat every 5 sec 
     //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
-
-      digitalWrite(PB15, 0);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-      Serial.println("Power monitor - D4 - PB15 = 0 Func: sendReadings()");
 
       //TODO: Do I know it the receiver received the LoRa message? how?
       LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
+
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
 
@@ -837,25 +735,9 @@ boolean runClockEvery(unsigned long interval)
       #endif
 
       readingID++;
-      goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
     }
   }
 
 #endif //enableLoRa
 
-void activate_power_monitor_pins()
-{
-  pinMode (PB12, OUTPUT);
-  pinMode (PB13, OUTPUT);
-  pinMode (PB14, OUTPUT);
-  pinMode (PB15, OUTPUT);
-  digitalWrite(PB12, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-  // Serial.println("Power monitor - PB12 = 1");
-  digitalWrite(PB13, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-  // Serial.println("Power monitor - PB13 = 1");
-  digitalWrite(PB14, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-  // Serial.println("Power monitor - PB15 = 1");
-  digitalWrite(PB15, 1);        // put power monitor pin in 1 so we can see it in Nordic Power Profiller
-  // Serial.println("Power monitor - PB15 = 1");
-} //end activate_power_monitor_pins
 /*********************************************** End Function Definitions ********************************************/
