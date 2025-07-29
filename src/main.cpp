@@ -5,6 +5,7 @@
  * Alexandre Nuernberg - alexandreberg@gmail.com
  * 
  * Code available on: https://github.com/alexandreberg/SAPM_Sensor_BluePill
+ * Board Schematics here: https://github.com/alexandreberg/SAPM_Sensor_BluePill/tree/Station-02/Documentation/Schematics/Transmissor_STM32_BluePill_V1
  * 
  * RFM95 LoRa Connection - STM32 Bluepill
  *    VCC - 3.3V
@@ -17,14 +18,26 @@
  *    DIO0 - (PA1)
  * 
  * BackupRegisters:
+ * There are 10 16 bit registers on STM32 BP with data going from 0 to 65535
  * See https://community.st.com/t5/stm32-mcus/how-to-use-the-stm32-s-backup-registers/ta-p/49892
  *
  * Backup registers can be written/read and protected and have the option of being preserved in VBAT mode when the VDD domain is powered off. 
- * The BackUp Registers are part of the RTC peripheral so we will need to enable the RTC to be able to access them. 
+ * The Backup Registers are part of the RTC peripheral so we will need to enable the RTC to be able to access them. 
  * The STM32 Blue Pill, which typically uses the STM32F103C8T6 microcontroller, has 10 backup registers.
  * Each register is 16 bits wide, providing a total of 20 bytes of data that can be stored in the backup domain.
  * 
  * (!) To be able to preserve the backup registers through a power cycle, VBAT must remain powered when VDD is removed, this is called the VBAT mode.
+ *
+ * BackupRegister Values:
+ * Register - Value - Description
+ * 0 - 
+ * 1 - 
+ * 2 - != 0 - indicates that  STM32 should go into deepsleep
+ * 3 - != 0 - indicates that  have to go into deepsleep
+ * 
+ * goToSleep_flag = 0; i boot flag
+ * goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
+ * goToSleep_flag = 2; //hibernation flag 1min ?????
  *
  * 23.11.2024 - Changing the code to read and hibernate for 1 minute between ultrasound readings.
  *             - 1min on and 1min off, adjust to not stay on for so long and turn off as soon as it transmits
@@ -35,23 +48,12 @@
  * reactivate hibernation and make it sleep for 1min
  * 
  * 
-BackupRegister Values:
-Register - Value - Description
-0 - 
-1 - 
-2 - != 0 - indicates that  STM32 should to go into deepsleep
-3 - != 0 -//indicates that  have to go into deepsleep
-
-goToSleep_flag = 0; i boot flag
-goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
-goToSleep_flag = 2; //hibernation flag 1min ?????
-
  * 27.07.2025 - Migrating for sensor-02 and optimizing
 */  
 
 /*********************************************** Sensor Description ***********************************************/
-#define sensor_id "Station_02"           // <<=== Station identification  ==>> CHANGE HERE!!
-#define sensor_location "Bridge_01"     // <<=== Sensor location        ==>> CHANGE HERE!!
+#define station_id "Station_02"           // <<=== Station identification  ==>> CHANGE HERE!!
+#define station_location "Bridge_01"     // <<=== Sensor location        ==>> CHANGE HERE!!
 
 /*********************************************** Macro Definitions ***********************************************/
 //Enable (uncommenting) or disable (commenting out) services and periferals
@@ -206,54 +208,55 @@ void goToSleep();
 #endif //enableLoRa
 
 /*********************************************** End Function Prototypes *******************************************/
-// TODO: Need to be better documented and clarified!!!!
 void setup() {
   sketchSetup();                      // Setup of the Serial log and initial serial setup
   pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
   
-  #ifdef enableWatchDog               // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
+  #ifdef enableWatchDog               
+    // Prepare to use de backup domain to use de registers in deep sleep mode  
     enableBackupDomain();             // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h 
 
-    if ( getBackupRegister(2) != 0) { // indicates that  STM32 should to go into deepsleep
-      Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
-      setBackupRegister(2, 0);
+    if ( getBackupRegister(2) != 0) { // indicates that  STM32 should go into deepsleep
+      Serial.println("Sistema reinicializado pelo WatchDog!");
+      Serial.println("Irá entrar em hibernação no próximo ciclo ...");
+      setBackupRegister(2, 0);  // Resets Backup Register (BR)
       delay(100);
-      setupRTC();
-      LowPower.begin();
-      goToSleep_flag = 2; //hibernation flag 1min ?????
+      setupRTC(); // Configures RTC so BR can be used
+      LowPower.begin();   // Starts low power mode
+      goToSleep_flag = 1; // 1 min Hibernation flag
       goToSleep();    
     }
 
+    // TODO: essa parte ficou redundante, precisa remove-la do cogigo
     if (getBackupRegister(3) != 0 ) { //indicates that  have to go into deepsleep
       Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
       setupRTC();
       enableBackupDomain();
       setBackupRegister(3, 0);
       delay(100);
-      LowPower.begin();
+      LowPower.begin();   // Starts low power mode
       goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
       goToSleep();
     }
-    disableBackupDomain();
+    
+    disableBackupDomain();  // Normal operation
     IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
   #endif
 
   //Enable the LoRa power supply
-  pinMode(PB13,OUTPUT); 
+  pinMode(PB13,OUTPUT); // PB13 connected to MINI360 enable pin
   digitalWrite(PB13, HIGH); 
-  
   delay(25); //Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
-
-  LowPower.begin(); //STM32 deep sleep
+  LowPower.begin(); // Starts low power mode
 
   #ifdef enableRTCstm32
-    setupRTC();
-    setTime();
+    setupRTC(); // Configures RTC
+    setTime(); // Adjusts initial time before clock sinchronization via LoRa
     startUpMinute = rtc.getMinutes();
   #endif
 
   #ifdef enableTinyRTC
-    startTinyRTC();
+    // startTinyRTC();
     //setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
   #endif
 
@@ -287,10 +290,10 @@ void loop() {
 /*********************************************** Function Definitions ***********************************************/
 //////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
 // Shows system infomation and configures serial interface
+// reviewed
 void sketchSetup() {
   Serial.begin(115200); 
-
-  Serial.print("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
+  Serial.print("\nStarting Station: " + String(station_id) + " on " + String(station_location));
   Serial.println("\nIlha 3d");
   Serial.println("\nwww.ilha3d.com");
   Serial.println("\n");
@@ -328,7 +331,7 @@ void startTinyRTC() {
 
   void setTime(){
       // Set the time
-      //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+      //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0)); // Just to test
       rtc.adjust(DateTime(year - 2000, month, day, hours, minutes, seconds));
   }
   void readTimeTinyRTC() {
@@ -361,14 +364,16 @@ void startTinyRTC() {
 #endif //enableTinyRTC
 
 #ifdef enableRTCstm32
+// reviewed
 void setupRTC(){
       // Select RTC clock source: LSI_CLOCK, LSE_CLOCK or HSE_CLOCK.
       // By default the LSI is selected as source.
-      //rtc.setClockSource(STM32RTC::LSI_CLOCK); //3V3 ligado com diodo no VBAT
-      rtc.setClockSource(STM32RTC::LSE_CLOCK); //3V3 wired with a diode on VBAT
+      //rtc.setClockSource(STM32RTC::LSI_CLOCK); // No need to VBAT on 3V3
+      rtc.setClockSource(STM32RTC::LSE_CLOCK); // LSE is the most accurate clock. Uses the 32k crystal. 3V3 should be wired with a diode on VBAT
       rtc.begin(); // initialize RTC 24H format
   }  
 
+  // reviewed
   void setTime(){
       // Set the time
       rtc.setHours(hours);
@@ -394,6 +399,7 @@ void setupRTC(){
 
 #ifdef enableUltrasonic
   // Ultrasonic Distance Sensor setup
+  // reviewed
   void ultrasonic_setup(){
     pinMode(triggerPin, OUTPUT);
     pinMode(echoPin, INPUT);  
@@ -475,17 +481,27 @@ int compareReadings(const void *a, const void *b) {
 #endif //enableUltrasonic
 
 //////////////////////////////////////////////////// goToSleep() //////////////////////////////////////////////////// 
+// Checks if STM32 BP need go into deep sleep mode
+// reviewed
  void goToSleep() {
-    if (goToSleep_flag == 2) { //Não encontrou o gateway e hibernará por 1 minuto
+    if (goToSleep_flag == 1) { // 1 minute DS
       #ifdef enableWatchDog
         IWatchdog.reload();
       #endif
-      // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
       Serial.println("Hibernando por 1 minuto..."); 
       delay (10);
-      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
-      LowPower.shutdown(1000 * 60); //hiberna por 1 min
+      LowPower.shutdown(1000 * 60); //hiberna por 1 min: 1000ms * 60s
     }
+    if (goToSleep_flag == 15) { // 15 minutes DS 
+      #ifdef enableWatchDog
+        IWatchdog.reload();
+      #endif
+      Serial.println("Hibernando por 15 minutos..."); 
+      delay (10);
+      LowPower.shutdown(1000 * 60 * 15); // 1000ms * 60s * 15min
+    }
+    
+    /*
     //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
     if (goToSleep_flag == 1) {
     //   //DateTime now = rtc.now();
@@ -518,7 +534,7 @@ int compareReadings(const void *a, const void *b) {
     //   }
 
     }
- 
+    */
  }
 
 #ifdef enableLoRa
@@ -680,7 +696,8 @@ boolean runClockEvery(unsigned long interval)
   }
 
   //=============================================================================================================
-  //Initialize LoRa module
+  // Initialize LoRa module
+  // reviewed
   void start_LoRa(){
     //LoRa.setTxPower(20);    // Change transmission power
     
@@ -695,7 +712,7 @@ boolean runClockEvery(unsigned long interval)
     }
     if (lora_startup_counter == 10) {
       Serial.println("LoRa initialization Failed!"); 
-          // delay (100);
+      delay (100);
     }
         if (lora_startup_counter < 10) {
           #ifdef enableSerialLog
@@ -703,7 +720,6 @@ boolean runClockEvery(unsigned long interval)
           #endif
     }
 
-    //Setup receiver para receber o update da hora:
     #ifdef enableSerialLog
       Serial.println("LoRa Receiver Callback with LoRa Reset in PA0");
       Serial.println("LoRa Simple Node");
@@ -724,7 +740,7 @@ boolean runClockEvery(unsigned long interval)
     //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
 
       //TODO: Do I know it the receiver received the LoRa message? how?
-      LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
+      LoRaMessage = String(station_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
 
       //Send LoRa packet to receiver
       LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
