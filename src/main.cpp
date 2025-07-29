@@ -271,13 +271,14 @@ void loop() {
   readUltrasonic();
   sendReadings();
 
-  if (runClockEvery(1000 * 10)) { //Does it say here how long it stays active?? 10s
-    goToSleep_flag = 2; //Flag that indicates that have to hibernate FOR 1MIN
+  if (runClockEvery(1000 * 10)) { // Runs every 10s
+    goToSleep_flag = 1; // Flag that indicates that have to hibernate for 1 min
     enableBackupDomain();
     setBackupRegister(2, 10); 
     disableBackupDomain();
   }
   goToSleep();
+  // TODO: rever essa parte =>
   //checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
   // delay(60000); //faz uma leitura por minuto
   #ifdef enableWatchDog
@@ -408,16 +409,17 @@ void setupRTC(){
     #endif
   } //end ultrasonic_setup
 
-// Function adapted to calculate the median of 11 readings from the ultrasonic sensor and display it as the read distance
+// Function adapted to calculate the median of 11 readings from the ultrasonic sensor (US) and display it as the read distance
+// reviewed
 void readUltrasonic() {
-  int readings[11];                           // 11 readings (To calculate the median it is better to use an odd number)
+  int readings[11]; // n readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]); 
 
   #ifdef enableSerialLog
     Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size) );
   #endif
 
-  // Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
+  // Take 'ultrasonic_readings_array_size' consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
   for (int i = 0; i < ultrasonic_readings_array_size; i++) { //for1
     check_distance: // Label for goto
     // for (int j = 0; j < 3; j++) { //TODO: for2 introduces the possibility of averaging or applying other filtering techniques to improve the accuracy of the distance measurements.
@@ -426,11 +428,11 @@ void readUltrasonic() {
       digitalWrite(triggerPin, HIGH);
       delayMicroseconds(10);
       pulseLength = pulseIn(echoPin, HIGH);
-      readingDistance = pulseLength / 58;   // Measured distance in centimeters
+      readingDistance = pulseLength / 58;   // Measured distance in centimeters TODO: change to mm
       delay(50);
 
       if (readingDistance > maxDistanceReading || readingDistance < minDistanceReading) { //eliminate erroneous readings above or below the sensor range
-        goto check_distance;
+        goto check_distance; // repeats the reading till finds one into the sensor range
       }
     // } //for2
     readings[i] = readingDistance;
@@ -442,7 +444,7 @@ void readUltrasonic() {
 
   float median = calculateMedian(readings, ultrasonic_readings_array_size);    // Calculate the Median
 
-  // TODO: Verifica se a median mudou significativamente
+  // TODO: Verifica se a median mudou significativamente, esta lógica precisa ser implementada para somente enviar mensagens se o valor da leitura mudou, assim economizando energia de transmissão de dados redundantes
   // if (abs(median - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
     // lastEchoDistance = median;
 
@@ -683,6 +685,7 @@ void checkonReceive() { //TODO ver se essa é a função que recebe o retorno do
     }
 }
 
+// TODO: preciso do runClockEvery? não posso usar a mesma função: runEvery para fazer a mesma coisa???
 boolean runClockEvery(unsigned long interval)
   {
     static unsigned long previousMillis = 0;
@@ -739,7 +742,8 @@ boolean runClockEvery(unsigned long interval)
     if (runEvery(5000)) { // repeat every 5 sec 
     //TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
 
-      //TODO: Do I know it the receiver received the LoRa message? how?
+      //TODO: Do I know it the receiver received the LoRa message? how? com transmissão de retorno do gtw.
+      // TODO: readingDistance: aqui envio o readingDistance 2x, o gtw precisa comparar se os valores são iguais, se forem diferentes solicitar uma retransmissão, pois o readingDistance pode ser lixo de recepção.
       LoRaMessage = String(station_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
 
       //Send LoRa packet to receiver
