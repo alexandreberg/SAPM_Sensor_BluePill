@@ -91,10 +91,10 @@
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-String version = "System Version: SAPI_Station_BluePill_20250727-01";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPI_Station_BluePill_20250729-01";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
-  const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
+  const int ledPin = PC13;      // TODO: Just to have visual information that it is working. 
 #endif
 
 #ifdef enableTinyRTC            // Not used
@@ -210,7 +210,8 @@ void goToSleep();
 /*********************************************** End Function Prototypes *******************************************/
 void setup() {
   sketchSetup();                      // Setup of the Serial log and initial serial setup
-  pinMode(PC13, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
+  pinMode(ledPin, OUTPUT);              // Initialize digital pin PC13 (LED) as an output.
+  digitalWrite(ledPin, LOW);  // Switches on the LED
   
   #ifdef enableWatchDog               
     // Prepare to use de backup domain to use de registers in deep sleep mode  
@@ -294,12 +295,16 @@ void loop() {
 // reviewed
 void sketchSetup() {
   Serial.begin(115200); 
+  delay(2000); 
+  Serial.println("");
+  Serial.println("");
   Serial.print("\nStarting Station: " + String(station_id) + " on " + String(station_location));
   Serial.println("\nIlha 3d");
   Serial.println("\nwww.ilha3d.com");
-  Serial.println("\n");
+  Serial.println("");
   Serial.println(String (version));
   Serial.println("");
+  delay(5000); // Wait for read the messages
 }
 
 #ifdef enableTinyRTC
