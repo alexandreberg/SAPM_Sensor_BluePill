@@ -46,7 +46,9 @@ goToSleep_flag = 0; i boot flag
 goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
 goToSleep_flag = 2; //hibernation flag 1min ?????
 
--06.08.2025 - Cleaning and organizing the file
+-06.08.2025 OK  - Cleaning and organizing the file
+            OK  - Identing the file
+            - Increasing RSSI signal for LoRa power
             - Correcting problem that sends lora message before ending US routines.
 */
 
@@ -678,7 +680,7 @@ boolean runClockEvery(unsigned long interval)
 // Initialize LoRa module
 void start_LoRa()
 {
-  // LoRa.setTxPower(20);    // Change transmission power
+  LoRa.setTxPower(20); // Change LoRa transmission power to 20dBm
 
   LoRa.setPins(csPin, resetPin, irqPin); // SPI LoRa pins
   // LoRa.setPins(Lora_SS, Lora_RST, Lora_DIO0); //pinos definidos diretamente na lib
