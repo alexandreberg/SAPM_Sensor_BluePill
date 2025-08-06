@@ -46,16 +46,15 @@ goToSleep_flag = 0; i boot flag
 goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
 goToSleep_flag = 2; //hibernation flag 1min ?????
 
- * 
+-06.08.2025 - Cleaning and organizing the file
+            - Correcting problem that sends lora message before ending US routines.
 */  
 
 /*********************************************** Sensor Description ***********************************************/
-//REVIEWED
-#define sensor_id "Sensor_01"           // <<=== Sensor identification  ==>> CHANGE HERE!!
+#define sensor_id "Station_01"           // <<=== Sensor identification  ==>> CHANGE HERE!!
 #define sensor_location "Bridge_02"     // <<=== Sensor location        ==>> CHANGE HERE!!
 
 /*********************************************** Macro Definitions ***********************************************/
-//REVIEWED
 //Enable (uncommenting) or disable (commenting out) services and periferals
 #define enableSerialLog         // enable Serial debug on console
 #define enableWatchDog          // enable watchdog for deepsleep
@@ -65,7 +64,6 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 #define enableLoRa              // enable LoRa communication
 
 /*********************************************** Library Definitions ***********************************************/
-//REVIEWED
 #include <Arduino.h>
 #include <stdlib.h>
 #include <STM32LowPower.h>      //Deep Sleep for STM32
@@ -92,8 +90,7 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-//REVIEWED
-String version = "System Version: SAPM_Sensor_BluePill_20241229-01 - median";  // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20250806-01";  // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
   const int ledPin = PB13;      // TODO: Just to have visual information that it is working. 
@@ -170,7 +167,6 @@ int goToSleep_flag = 0;         // Flag to enter in deep sleep mode
 #endif  //enableLoRa
 
 /*********************************************** Function Prototypes ***********************************************/
-//REVIEWED
 void sketchSetup();
 
 
@@ -293,7 +289,6 @@ void loop() {
 
 /*********************************************** Function Definitions ***********************************************/
 //////////////////////////////////////////////////// sketchSetup //////////////////////////////////////////////////// 
-//REVIEWED
 // Shows system infomation and configures serial interface
 void sketchSetup() {
   Serial.begin(115200); 
@@ -401,7 +396,6 @@ void setupRTC(){
 #endif //enableRTCstm32
 
 #ifdef enableUltrasonic
-  //REVIEWED
   // Ultrasonic Distance Sensor setup
   void ultrasonic_setup(){
     pinMode(triggerPin, OUTPUT);
@@ -411,42 +405,7 @@ void setupRTC(){
     #endif
   } //end ultrasonic_setup
 
-//   void readUltrasonic() { //Meu código original
-//     // ===== Sensor Ultrasonic =====
-
-//     // precisa do for pq o primeiro valor da leitura da zero e se tiver só uma leitura ele entra em deep sleep com valor pulseLength=0                                                   
-//         check_distance: //Label para goto
-//         for (int i=0  ; i < 3; i++) {
-//             digitalWrite(triggerPin, LOW);                    // send low to get a clean pulse     
-//             delayMicroseconds(5);                          // let it settle
-//             digitalWrite(triggerPin, HIGH);                   // send high to trigger device
-//             delayMicroseconds(10);                         // let it settle
-//             pulseLength = pulseIn(echoPin, HIGH);          // measure pulse coming back   
-//             readingDistance = pulseLength / 58;             // calculate distance (cm)
-//             Serial.print("readingDistance: "); Serial.println(readingDistance);
-//             delay(50);
-
-//             // Elimina picos de leitura erroneos do sensor mas só fica aqui por maxReadingNumber para evitar loop infinito
-//             if (readingDistance > 500 and maxReadingNumber < 200){ //descarta readings maiores que 500cm
-//               maxReadingNumber = maxReadingNumber + 1;
-//               goto check_distance;
-//             }//if readingDistance
-//         } //for
-
-//         if ((readingDistance - lastEchoDistance) >= 1){            // check for change in distance só manda msg se mudar o valor > 1cm 
-//             lastEchoDistance = readingDistance;
-//             //#ifdef enableSerialLog
-//               Serial.print("Distancia Lida pelo Sensor Ultrasonico: ");
-//               Serial.print(readingDistance); Serial.println("cm");
-//               Serial.println("");
-//             //#endif
-//             delay(50);
-//         } //if
-//       delay(500); 
-//       }
-
 // Function adapted to calculate the median of 11 readings from the ultrasonic sensor and display it as the read distance
-//REVIEWED
 void readUltrasonic() {
   int readings[11];                           // 11 readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]); 
@@ -458,7 +417,6 @@ void readUltrasonic() {
   // Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
   for (int i = 0; i < ultrasonic_readings_array_size; i++) { //for1
     check_distance: // Label for goto
-    // for (int j = 0; j < 3; j++) { //TODO: for2 introduces the possibility of averaging or applying other filtering techniques to improve the accuracy of the distance measurements.
       digitalWrite(triggerPin, LOW);
       delayMicroseconds(5);
       digitalWrite(triggerPin, HIGH);
@@ -470,7 +428,6 @@ void readUltrasonic() {
       if (readingDistance > 500 || readingDistance < 0) { //eliminate erroneous readings above or below the sensor range
         goto check_distance;
       }
-    // } //for2
     readings[i] = readingDistance;
 
     #ifdef enableSerialLog
@@ -486,32 +443,12 @@ void readUltrasonic() {
 
     #ifdef enableSerialLog
       Serial.println("Distance Read by the Ultrasonic Sensor (median): " + String(median) + "cm");
-      // Serial.print(median); 
-      // Serial.println("cm");
-      // Serial.println("");
     #endif
   // }
 
   delay(50); //para economizar bateria, pode-se reduzir esse tempo
 }
 
-// // Função para calcular a median
-// float calculateMedian(int *array, int arraySize) {
-//   qsort(array, arraySize, sizeof(int), compareReadings);
-
-//   if (arraySize % 2 == 0) {
-//     return (float)(array[arraySize / 2 - 1] + array[arraySize / 2]) / 2;
-//   } else {
-//     return (float)array[arraySize / 2];
-    
-//   }
-// }
-
-// int compareReadings(const void *a, const void *b) {
-//   return (*(int *)a - *(int *)b);
-// }
-
-// Function to calculate the median
 // TODO: improve commenting
 float calculateMedian(int *array, int arraySize) {
   qsort(array, arraySize, sizeof(int), compareReadings);
@@ -546,7 +483,6 @@ int compareReadings(const void *a, const void *b) {
       // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto..."); 
       Serial.println("Hibernando por 1 minuto..."); 
       delay (10);
-      // LowPower.shutdown(1000 * 60 * 30); //hiberna por 30 min
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
     }
     //Entra em Deep Sleep e acorda em horas cheias hh:00 ou hh:30
@@ -559,26 +495,6 @@ int compareReadings(const void *a, const void *b) {
       Serial.println("Hibernando por 1 minuto..."); 
       delay (10);
       LowPower.shutdown(1000 * 60); //hiberna por 1 min
-    //   int sleepTime = 59 - rtc.getMinutes(); //STM32RTC
-
-    //   if ( sleepTime <= 30) {
-    //     //#ifdef enableSerialLog
-    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
-    //       delay (100);
-    //     //#endif
-    //     //vai dormir...
-    //     LowPower.shutdown(1000 * 60 * sleepTime); //D.S por 1000ms* 60s * sleepTime/
-    //   }
-
-    //   else  {
-    //     sleepTime = sleepTime -30;
-    //     //#ifdef enableSerialLog
-    //       Serial.print("Vai dormir por: "); Serial.print(sleepTime); Serial.println(" minutos");
-    //       delay (100);
-    //     //#endif
-    //     //vai dormir...
-    //     LowPower.shutdown(1000 * 60 *sleepTime); //D.S por 1000ms* 60s * sleepTime/
-    //   }
 
     }
  
@@ -660,32 +576,6 @@ void onReceive(int packetSize) {
     Serial.print("Minuto:"); Serial.println(minuto01);
     Serial.print("Segundo:"); Serial.println(segundo01);
   
-    // //chega se a data não chegou com erro de transmissão
-    // if (dia01 == dia02 and mes01 == mes02 and ano01 == ano02 and hora01 == hora02 and minuto01 == minuto02 and segundo01 == segundo02 )
-    // {
-    //   hours = hora01.toInt();
-    //   minutes = minuto01.toInt();
-    //   seconds = segundo01.toInt();
-    //   rtc.setTime(hours, minutes, seconds);
-
-    //   day = dia01.toInt();
-    //   month = mes01.toInt();
-    //   year = ano01.toInt();
-    //   rtc.setDate(weekDay, day, month, year);
-    //   goToSleep_flag = 1;
-    //   readTime();
-
-    //   enableBackupDomain();
-    //   setBackupRegister(3, 10); //indica que tem que entrar em deep sleep
-    //   disableBackupDomain();
-    // }
-      // Get RSSI
-      #ifdef enableSerialLog
-        //rssi = LoRa.packetRssi();
-        //Serial.print(" with RSSI ");    
-        //Serial.println(rssi);
-      #endif
-
   }
 }
   
@@ -703,7 +593,6 @@ void onReceive(int packetSize) {
     LoRa_rxMode();
   }
 
-  //REVIEWED
   boolean runEvery(unsigned long interval)
   {
     static unsigned long previousMillis = 0;
@@ -745,7 +634,6 @@ boolean runClockEvery(unsigned long interval)
 
   //=============================================================================================================
   //Initialize LoRa module
-  //REVIEWED
   void start_LoRa(){
     //LoRa.setTxPower(20);    // Change transmission power
     
