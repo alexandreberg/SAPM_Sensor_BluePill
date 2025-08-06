@@ -48,7 +48,7 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 
 -06.08.2025 OK  - Cleaning and organizing the file
             OK  - Identing the file
-            - Increasing RSSI signal for LoRa power
+            OK - Increasing RSSI signal for LoRa power to 20dBm
             - Correcting problem that sends lora message before ending US routines.
 */
 
@@ -92,7 +92,7 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-String version = "System Version: SAPM_Sensor_BluePill_20250806-01"; // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_20250806-06"; // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
 const int ledPin = PB13; // TODO: Just to have visual information that it is working.
@@ -139,7 +139,7 @@ const unsigned int echoPin = PA2;
 unsigned long pulseLength = 0;
 unsigned long readingDistance = 0; // Measured distance in centimeters
 // unsigned long maxReadingNumber = 0;    // Number of ultrasonic readings to do the calculation of mean and average
-// boolean ultrasonicActive  = true;
+bool distance_reading_done = false;
 #endif // enableUltrasonic
 
 int goToSleep_flag = 0; // Flag to enter in deep sleep mode
@@ -276,19 +276,21 @@ void loop()
   readUltrasonic();
   sendReadings();
 
-  if (runClockEvery(1000 * 10))
-  {                     // Does it say here how long it stays active?? 10s
-    goToSleep_flag = 2; // Flag that indicates that have to hibernate FOR 1MIN
+  #ifdef enableWatchDog
+    IWatchdog.reload();
+  #endif
+
+  // if (runClockEvery(1000 * 10))
+  // {                     // Does it say here how long it stays active?? 10s
+    // goToSleep_flag = 2; // Flag that indicates that have to hibernate FOR 1MIN
     enableBackupDomain();
     setBackupRegister(2, 10);
     disableBackupDomain();
-  }
+  // }
   goToSleep();
 // checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
 //  delay(60000); //faz uma leitura por minuto
-#ifdef enableWatchDog
-  IWatchdog.reload();
-#endif
+
 }
 
 /*********************************************** End loop () ***********************************************/
@@ -429,9 +431,9 @@ void readUltrasonic()
   int readings[11]; // 11 readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]);
 
-#ifdef enableSerialLog
-  Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size));
-#endif
+  #ifdef enableSerialLog
+    Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size));
+  #endif
 
   // Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
   for (int i = 0; i < ultrasonic_readings_array_size; i++)
@@ -451,9 +453,9 @@ void readUltrasonic()
     }
     readings[i] = readingDistance;
 
-#ifdef enableSerialLog
-    Serial.println("readings-" + String(i) + " = " + String(readings[i]));
-#endif
+  #ifdef enableSerialLog
+      Serial.println("readings-" + String(i) + " = " + String(readings[i]));
+  #endif
   } // for1
 
   float median = calculateMedian(readings, ultrasonic_readings_array_size); // Calculate the Median
@@ -462,9 +464,11 @@ void readUltrasonic()
   // if (abs(median - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
   // lastEchoDistance = median;
 
-#ifdef enableSerialLog
-  Serial.println("Distance Read by the Ultrasonic Sensor (median): " + String(median) + "cm");
-#endif
+  #ifdef enableSerialLog
+    Serial.println("Distância lida pelo sensor ultrassônico (mediana): " + String(median) + "cm");
+    distance_reading_done = true;
+    // Serial.println("distance_reading_done: " + String(distance_reading_done));
+  #endif
   // }
 
   delay(50); // para economizar bateria, pode-se reduzir esse tempo
@@ -475,15 +479,15 @@ float calculateMedian(int *array, int arraySize)
 {
   qsort(array, arraySize, sizeof(int), compareReadings);
 
-// Print the sorted values
-#ifdef enableSerialLog
-  Serial.println("Sorted distance readings:");
-  for (int i = 0; i < arraySize; i++)
-  {
-    Serial.println(array[i]);
-  }
-  Serial.println("\n");
-#endif
+  // Print the sorted values
+  #ifdef enableSerialLog
+    Serial.println("Leituras das distâncias ordenadas:");
+    for (int i = 0; i < arraySize; i++)
+    {
+      Serial.println(array[i]);
+    }
+    Serial.println("\n");
+  #endif
 
   if (arraySize % 2 == 0)
   {
@@ -619,18 +623,26 @@ void onReceive(int packetSize)
 
 void LoRa_sendMessage(String message)
 {
+  // if (!distance_reading_done)
+  // {
   LoRa_txMode();        // set tx mode
   LoRa.beginPacket();   // start packet
   LoRa.print(message);  // add payload
   LoRa.endPacket(true); // finish packet and send it
+  // }
 }
 
 void onTxDone()
 {
 #ifdef enableSerialLog
-  Serial.println("TxDone");
+  Serial.println("TxDone - Transmissão completa.");
 #endif
-  LoRa_rxMode();
+
+// Define a flag para hibernar. Isso só será executado quando a transmissão for finalizada.
+goToSleep_flag = 2;
+
+// Retorna ao modo de recepção para o próximo ciclo
+LoRa_rxMode();
 }
 
 boolean runEvery(unsigned long interval)
@@ -723,25 +735,30 @@ void start_LoRa()
 
 void sendReadings()
 {
-  if (runEvery(5000))
-  { // repeat every 5 sec
-    // TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
+  
+    // if (runEvery(5000))
+    // { // repeat every 5 sec
+      // TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
+      if (distance_reading_done == 1) // Just sends after the US have done all the measurementes
+      {
 
-    // TODO: Do I know it the receiver received the LoRa message? how?
-    LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
+        // TODO: Do I know it the receiver received the LoRa message? how?
+        LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
 
-    // Send LoRa packet to receiver
-    LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
+        // Send LoRa packet to receiver
+        LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
+        distance_reading_done = false;
 
-#ifdef enableSerialLog
-    Serial.print("Sending packet N°: ");
-    Serial.println(readingID);
-    Serial.print("LoRaMessage: ");
-    Serial.println(LoRaMessage);
-#endif
+        #ifdef enableSerialLog
+              Serial.print("Sending packet N°: ");
+              Serial.println(readingID);
+              Serial.print("LoRaMessage: ");
+              Serial.println(LoRaMessage);
+        #endif
 
-    readingID++;
-  }
+        readingID++;
+      }
+  // }
 }
 
 #endif // enableLoRa
