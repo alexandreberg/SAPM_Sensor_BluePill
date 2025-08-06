@@ -681,6 +681,7 @@ boolean runClockEvery(unsigned long interval)
 void start_LoRa()
 {
   LoRa.setTxPower(20); // Change LoRa transmission power to 20dBm
+  Serial.println("Potência de Transmissão LoRa: 20dBm");
 
   LoRa.setPins(csPin, resetPin, irqPin); // SPI LoRa pins
   // LoRa.setPins(Lora_SS, Lora_RST, Lora_DIO0); //pinos definidos diretamente na lib
