@@ -37,19 +37,52 @@
  *
 BackupRegister Values:
 Register - Value - Description
-0 -
-1 -
-2 - != 0 - indicates that  STM32 should to go into deepsleep
-3 - != 0 -//indicates that  have to go into deepsleep
+BR0 - último estado (logState)
+BR1  →
+BR2  → != 0 - indicates that  STM32 should to go into deepsleep
+BR3  → != 0 -//indicates that  have to go into deepsleep
+BR4  → contador de boots
+BR5 e BR6 → timestamp (parte baixa/alta)
+BR7 - FREE
+BR8 - FREE
+BR9 - FREE
 
+Flag to enter in deep sleep mode:
 goToSleep_flag = 0; i boot flag
 goToSleep_flag = 1; //hibernation flag normal deepsleep ?????
 goToSleep_flag = 2; //hibernation flag 1min ?????
+
+Last state before reset/sleep:
+goToSleep = 10 // vai dormir
+loop = 20 // entrou no loop
+onReceive = 30
+sendReadings = 40
 
 -06.08.2025 OK  - Cleaning and organizing the file
             OK  - Identing the file
             OK - Increasing RSSI signal for LoRa power to 20dBm
             - Correcting problem that sends lora message before ending US routines.
+-27.08.2025 - Trying to correct the problem that freezes the return of the sensor after the hibernation leaving the holes in the graphic.
+ * Debug-enhanced version of BluePill LoRa Transmitter
+ * - Logs last execution state into BackupRegisters
+ * - Handles new LoRa timestamp message format: "TS:<timestamp>"
+ * - Prints backup registers at startup
+ * 
+BR1 / BR2 → timestamp (parte baixa/alta)
+
+Sobre a lib low power:
+https://github.com/stm32duino/STM32LowPower
+void shutdown(uint32_t ms): enter in shutdown mode param ms (optional): number of milliseconds before to exit the mode. The RTC is used in alarm mode to wakeup the board in ms milliseconds.
+Important:
+RTC used as Wakeup source requires to have LSE or LSI as clock source. If one of them is used nothing is changed else it will configure it to use LSI clock source. One exception exists when SHUTDOWN_MODE is requested and PWR_CR1_LPMS is defined, in that case LSE is required. So, if the board does not have LSE, it will fail.
+Eu uso o: rtc.setClockSource(STM32RTC::LSE_CLOCK); está correto.
+The board will restart when exit shutdown mode.
+
+Hardware state
+shutdown mode: high wake-up latency (possible hundereds of ms or second timeframe), voltage supplies are cut except always-on domain, memory content are lost and system basically reboots.
+
+
+
 */
 
 /*********************************************** Sensor Description ***********************************************/
@@ -64,12 +97,14 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 #define enableRTCstm32   // using STM32 internal RTC Clock
 // #define enableTinyRTC         // TODO: not used because de SPI bus freezes and loose the connection!
 #define enableLoRa // enable LoRa communication
+#define enableDebug // Enable verbosity in debugging log
 
 /*********************************************** Library Definitions ***********************************************/
 #include <Arduino.h>
 #include <stdlib.h>
 #include <STM32LowPower.h> //Deep Sleep for STM32
 #include <SPI.h>
+#include <time.h>
 
 #ifdef enableRTCstm32
 #include <STM32RTC.h>
@@ -92,7 +127,7 @@ goToSleep_flag = 2; //hibernation flag 1min ?????
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-String version = "System Version: SAPM_Sensor_BluePill_20250806-06"; // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_2025082803"; // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
 const int ledPin = PB13; // TODO: Just to have visual information that it is working.
@@ -170,10 +205,10 @@ String LoRaMessage = ""; // String to store the LoRa Message that should be sent
 
 /*********************************************** Function Prototypes ***********************************************/
 void sketchSetup();
-
 void readUltrasonic();
 float calculateMedian(int *array, int arraySize);
 int compareReadings(const void *a, const void *b);
+void logState(uint16_t code);
 
 #ifdef enableTinyRTC
 // void startTinyRTC();
@@ -216,31 +251,51 @@ void setup()
   sketchSetup();         // Setup of the Serial log and initial serial setup
   pinMode(PC13, OUTPUT); // Initialize digital pin PC13 (LED) as an output.
 
-#ifdef enableWatchDog   // TODO: if the LoRa gateway is not found go to deep sleep ==> é necessário?
+  // Blink pattern at startup
+  for (int i = 0; i < 5; i++)
+  {
+    digitalWrite(PC13, HIGH);
+    delay(150);
+    digitalWrite(PC13, LOW);
+    delay(150);
+  }
+
+  // Contador de reinicializações no BackupRegister 4
+  /* Cada vez que o setup() roda (seja por reset, watchdog ou wake-up), ele incrementa o valor armazenado no BR4.*/
+  enableBackupDomain();
+  uint16_t bootCounter = getBackupRegister(4);
+  bootCounter++;
+  setBackupRegister(4, bootCounter);
+  disableBackupDomain();
+
+  Serial.print("Boot counter (BR4): ");
+  Serial.println(bootCounter);
+
+#ifdef enableWatchDog
   enableBackupDomain(); // Function of .platformio\packages\framework-arduinoststm32\cores\arduino\stm32\backup.h
 
   if (getBackupRegister(2) != 0)
   { // indicates that  STM32 should to go into deepsleep
-    Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... ===");
+    Serial.println("Sistema reinicializado pelo WatchDog ... === Irá entrar em hibernação ... === BR2 = " + String(getBackupRegister(2)));
     setBackupRegister(2, 0);
     delay(100);
     setupRTC();
     LowPower.begin();
-    goToSleep_flag = 2; // hibernation flag 1min ?????
+    goToSleep_flag = 2; // hibernation flag 1min
     goToSleep();
   }
 
-  if (getBackupRegister(3) != 0)
-  { // indicates that  have to go into deepsleep
-    Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...");
-    setupRTC();
-    enableBackupDomain();
-    setBackupRegister(3, 0);
-    delay(100);
-    LowPower.begin();
-    goToSleep_flag = 1; // hibernation flag normal deepsleep ?????
-    goToSleep();
-  }
+  // if (getBackupRegister(3) != 0)
+  // { // indicates that  have to go into deepsleep
+  //   Serial.println("Sistema reinicializado pelo WatchDog preparando para hibernação...=== BR3 = " + String(getBackupRegister(3)));
+  //   setupRTC();
+  //   enableBackupDomain();
+  //   setBackupRegister(3, 0);
+  //   delay(100);
+  //   LowPower.begin();
+  //   goToSleep_flag = 1; // hibernation flag normal deepsleep ?????
+  //   goToSleep();
+  // }
   disableBackupDomain();
   IWatchdog.begin(10000000); // Init the watchdog timer with 10 seconds timeout
 #endif
@@ -249,48 +304,55 @@ void setup()
   pinMode(PB13, OUTPUT);
   digitalWrite(PB13, HIGH);
 
-  delay(25); // Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
+  delay(50); // Enable MP2307 in the MINI360 power regulator, it is needed 16ms to activate Vout
 
-  LowPower.begin(); // STM32 deep sleep
-
-#ifdef enableRTCstm32
+  Serial.println("Tentando inicializar o RTC com LSE...");
   setupRTC();
-  setTime();
-  startUpMinute = rtc.getMinutes();
-#endif
+  delay(50);
+  // Serial.println("setTime()");
+  //   setTime();
+  //   startUpMinute = rtc.getMinutes();
+  // if (!rtc.isConfigured())
+  // {
+  //   Serial.println("Erro: RTC com LSE não está funcionando!");
+  //   // Colocar alguma lógica alternativa ou travar o sistema
+  //   while (1)
+  //     ;
+  // }
+  Serial.println("LowPower.begin()");
+  LowPower.begin();
+  goToSleep();
 
-#ifdef enableTinyRTC
-  startTinyRTC();
-  // setTime(); //TODO: O TinyRTC já está sincronizado. Inibo o Time sync do GSM
-#endif
-
+  Serial.println("ultrasonic_setup()");
   ultrasonic_setup();
+  Serial.println("start_LoRa()");
   start_LoRa();
-
-  // readTimeTinyRTC();
 }
 
 /*********************************************** loop () ***********************************************/
 void loop()
 {
+  logState(20); // entrou no loop
   readUltrasonic();
   sendReadings();
 
-  #ifdef enableWatchDog
-    IWatchdog.reload();
-  #endif
+#ifdef enableWatchDog
+  IWatchdog.reload();
+#endif
 
   // if (runClockEvery(1000 * 10))
   // {                     // Does it say here how long it stays active?? 10s
-    // goToSleep_flag = 2; // Flag that indicates that have to hibernate FOR 1MIN
-    enableBackupDomain();
-    setBackupRegister(2, 10);
-    disableBackupDomain();
+  // goToSleep_flag = 2; // Flag that indicates that have to hibernate FOR 1MIN
+
+  // TODO: teste comentando 28.08 .Se comentar essa parte a lógica deixa de entrar em hibernação ==>
+  enableBackupDomain();
+  setBackupRegister(2, 10);
+  disableBackupDomain();
+
   // }
   goToSleep();
-// checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
-//  delay(60000); //faz uma leitura por minuto
-
+  // checkonReceive(); //TODO desativo pq não tem como diferenciar qdo volta do boot pelo watchdog precisaria ter um flag gravado em memo rtc
+  //  delay(60000); //faz uma leitura por minuto
 }
 
 /*********************************************** End loop () ***********************************************/
@@ -301,13 +363,36 @@ void loop()
 void sketchSetup()
 {
   Serial.begin(115200);
+  delay(200);
 
-  Serial.print("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
+  Serial.println("\nStarting Sensor: " + String(sensor_id) + " on " + String(sensor_location));
   Serial.println("\nIlha 3d");
   Serial.println("\nwww.ilha3d.com");
   Serial.println("\n");
   Serial.println(String(version));
   Serial.println("");
+
+  Serial.println("=== Boot STM32 Sensor Node ===");
+  Serial.print("Last state before reset/sleep: ");
+  Serial.println(getBackupRegister(0));
+  Serial.print("BackupReg1 (TS low): ");
+  Serial.println(getBackupRegister(5));
+  Serial.print("BackupReg2 (TS high): ");
+  Serial.println(getBackupRegister(6));
+
+#ifdef enableDebug
+  Serial.println("Last values of all Backup Registers:");
+  Serial.println("BR0 = " + String(getBackupRegister(0)));
+  Serial.println("BR1 = " + String(getBackupRegister(1)));
+  Serial.println("BR2 = " + String(getBackupRegister(2)));
+  Serial.println("BR3 = " + String(getBackupRegister(3)));
+  Serial.println("BR4 = " + String(getBackupRegister(4)));
+  Serial.println("BR5 = " + String(getBackupRegister(5)));
+  Serial.println("BR6 = " + String(getBackupRegister(6)));
+  Serial.println("BR7 = " + String(getBackupRegister(7)));
+  Serial.println("BR8 = " + String(getBackupRegister(8)));
+  Serial.println("BR9 = " + String(getBackupRegister(9)));
+#endif
 }
 
 #ifdef enableTinyRTC
@@ -431,9 +516,9 @@ void readUltrasonic()
   int readings[11]; // 11 readings (To calculate the median it is better to use an odd number)
   int ultrasonic_readings_array_size = sizeof(readings) / sizeof(readings[0]);
 
-  #ifdef enableSerialLog
-    Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size));
-  #endif
+#ifdef enableSerialLog
+  Serial.println("ultrasonic_readings_array_size = " + String(ultrasonic_readings_array_size));
+#endif
 
   // Take 11 consecutive readings to calculate the median and eliminate undue readings and outliers due to ultrasound reflection:
   for (int i = 0; i < ultrasonic_readings_array_size; i++)
@@ -453,9 +538,9 @@ void readUltrasonic()
     }
     readings[i] = readingDistance;
 
-  #ifdef enableSerialLog
-      Serial.println("readings-" + String(i) + " = " + String(readings[i]));
-  #endif
+#ifdef enableSerialLog
+    Serial.println("readings-" + String(i) + " = " + String(readings[i]));
+#endif
   } // for1
 
   float median = calculateMedian(readings, ultrasonic_readings_array_size); // Calculate the Median
@@ -464,11 +549,11 @@ void readUltrasonic()
   // if (abs(median - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
   // lastEchoDistance = median;
 
-  #ifdef enableSerialLog
-    Serial.println("Distância lida pelo sensor ultrassônico (mediana): " + String(median) + "cm");
-    distance_reading_done = true;
-    // Serial.println("distance_reading_done: " + String(distance_reading_done));
-  #endif
+#ifdef enableSerialLog
+  Serial.println("Distância lida pelo sensor ultrassônico (mediana): " + String(median) + "cm");
+  distance_reading_done = true;
+  // Serial.println("distance_reading_done: " + String(distance_reading_done));
+#endif
   // }
 
   delay(50); // para economizar bateria, pode-se reduzir esse tempo
@@ -479,15 +564,15 @@ float calculateMedian(int *array, int arraySize)
 {
   qsort(array, arraySize, sizeof(int), compareReadings);
 
-  // Print the sorted values
-  #ifdef enableSerialLog
-    Serial.println("Leituras das distâncias ordenadas:");
-    for (int i = 0; i < arraySize; i++)
-    {
-      Serial.println(array[i]);
-    }
-    Serial.println("\n");
-  #endif
+// Print the sorted values
+#ifdef enableSerialLog
+  Serial.println("Leituras das distâncias ordenadas:");
+  for (int i = 0; i < arraySize; i++)
+  {
+    Serial.println(array[i]);
+  }
+  Serial.println("\n");
+#endif
 
   if (arraySize % 2 == 0)
   {
@@ -508,13 +593,13 @@ int compareReadings(const void *a, const void *b)
 //////////////////////////////////////////////////// goToSleep() ////////////////////////////////////////////////////
 void goToSleep()
 {
+  logState(10); // vai dormir
   if (goToSleep_flag == 2)
-  { // Não encontrou o gateway e hibernará por 1 minuto
+  { // hibernará por 1 minuto
 #ifdef enableWatchDog
     IWatchdog.reload();
 #endif
-    // Serial.println("Não encontrou o Gateway, hibernando por 1 minuto...");
-    Serial.println("Hibernando por 1 minuto...");
+    Serial.println("Hibernando por 1 minuto... goToSleep_flag == " + String(goToSleep_flag));
     delay(10);
     LowPower.shutdown(1000 * 60); // hiberna por 1 min
   }
@@ -526,7 +611,7 @@ void goToSleep()
 #ifdef enableWatchDog
     IWatchdog.reload();
 #endif
-    Serial.println("Hibernando por 1 minuto...");
+    Serial.println("Hibernando por 1 minuto... goToSleep_flag == " + String(goToSleep_flag));
     delay(10);
     LowPower.shutdown(1000 * 60); // hiberna por 1 min
   }
@@ -548,78 +633,48 @@ void LoRa_txMode()
 //==================================== Lora Callback void onReceive ===================================================
 void onReceive(int packetSize)
 {
-  onReceive_flag = 1; // Entered the function onReceive
-#ifdef enableSerialLog
-  Serial.print("Pacote LoRa Recebido do Gateway: ");
-#endif
+  if (packetSize == 0) return;
 
-  int rssi;
-  String dia01;
-  String mes01;
-  String ano01;
-  String hora01;
-  String minuto01;
-  String segundo01;
-  String dia02;
-  String mes02;
-  String ano02;
-  String hora02;
-  String minuto02;
-  String segundo02;
+  String LoRaData = LoRa.readString();
+  Serial.print("LoRaData recebida: ");
+  Serial.println(LoRaData);
 
-  while (LoRa.available())
+  if (LoRaData.startsWith("TS:"))
   {
-    // Aqui eu faço ele entrar em deep sleep assim que receber a mensagem do Gateway
+    String tsStr = LoRaData.substring(3, LoRaData.indexOf('|') > 0 ? LoRaData.indexOf('|') : LoRaData.length());
+    unsigned long ts = tsStr.toInt();
+    Serial.print("Timestamp recebido: ");
+    Serial.println(ts);
 
-    String LoRaData = LoRa.readString();
-    // LoRaData format: dia/mes@ano_hora,minuto%segundo
-    // String example:2/2@21_20,57%27
-    Serial.print("LoRaData: ");
-    Serial.println(LoRaData);
-    // recebimento da data01
-    int pos1 = LoRaData.indexOf('/');
-    int pos2 = LoRaData.indexOf('@');
-    int pos3 = LoRaData.indexOf('_');
-    int pos4 = LoRaData.indexOf(',');
-    int pos5 = LoRaData.indexOf('%');
+    // ===== Conversão do timestamp para hora normal =====
+    time_t rawtime = (time_t)ts;
+    struct tm *timeinfo = gmtime(&rawtime); // ou localtime() se quiser considerar fuso
 
-    // recebimento da data02
-    int pos6 = LoRaData.indexOf('|');
-    int pos7 = LoRaData.indexOf('?');
-    int pos8 = LoRaData.indexOf('#');
-    int pos9 = LoRaData.indexOf('$');
-    int pos10 = LoRaData.indexOf('!');
-    int pos11 = LoRaData.indexOf('*');
+    char buffer[30];
+    sprintf(buffer, "%02d/%02d/%04d %02d:%02d:%02d",
+            timeinfo->tm_mday,
+            timeinfo->tm_mon + 1,
+            timeinfo->tm_year + 1900,
+            timeinfo->tm_hour,
+            timeinfo->tm_min,
+            timeinfo->tm_sec);
 
-    dia01 = LoRaData.substring(0, pos1);
-    mes01 = LoRaData.substring(pos1 + 1, pos2);
-    ano01 = LoRaData.substring(pos2 + 1, pos3);
-    hora01 = LoRaData.substring(pos3 + 1, pos4);
-    minuto01 = LoRaData.substring(pos4 + 1, pos5);
-    segundo01 = LoRaData.substring(pos5 + 1, pos6);
+    Serial.print("Hora convertida: ");
+    Serial.println(buffer);
+    // ================================================
 
-    dia02 = LoRaData.substring(pos6 + 1, pos7);
-    mes02 = LoRaData.substring(pos7 + 1, pos8);
-    ano02 = LoRaData.substring(pos8 + 1, pos9);
-    hora02 = LoRaData.substring(pos9 + 1, pos10);
-    minuto02 = LoRaData.substring(pos10 + 1, pos11);
-    segundo02 = LoRaData.substring(pos11 + 1, LoRaData.length());
-
-    Serial.println("Data e hora recebidas do Gateway:");
-    Serial.print("Dia:");
-    Serial.println(dia01);
-    Serial.print("Mês:");
-    Serial.println(mes01);
-    Serial.print("Ano:");
-    Serial.println(ano01);
-    Serial.print("Hora:");
-    Serial.println(hora01);
-    Serial.print("Minuto:");
-    Serial.println(minuto01);
-    Serial.print("Segundo:");
-    Serial.println(segundo01);
+    logState(30); //onReceive
+    enableBackupDomain();
+    setBackupRegister(5, (uint16_t)(ts & 0xFFFF));
+    setBackupRegister(6, (uint16_t)((ts >> 16) & 0xFFFF));
+    disableBackupDomain();
+  }
+  else
+  {
+    Serial.println("Mensagem LoRa recebida em formato inesperado.");
   }
 }
+
 
 void LoRa_sendMessage(String message)
 {
@@ -638,11 +693,11 @@ void onTxDone()
   Serial.println("TxDone - Transmissão completa.");
 #endif
 
-// Define a flag para hibernar. Isso só será executado quando a transmissão for finalizada.
-goToSleep_flag = 2;
+  // Define a flag para hibernar. Isso só será executado quando a transmissão for finalizada.
+  goToSleep_flag = 2;
 
-// Retorna ao modo de recepção para o próximo ciclo
-LoRa_rxMode();
+  // Retorna ao modo de recepção para o próximo ciclo
+  LoRa_rxMode();
 }
 
 boolean runEvery(unsigned long interval)
@@ -727,6 +782,39 @@ void start_LoRa()
   Serial.println();
 #endif
 
+  /* Endurecer a recepção: CRC + Sync Word + parâmetros idênticos
+  Com CRC desativado e sync word default, qualquer ruído “LoRa-like” pode passar. Ative CRC e defina Sync Word e parametrização idêntica nos dois lados (sensor e gateway). 
+  Acrescente no setup do LoRa em ambos:
+  */
+  LoRa.setSpreadingFactor(7);          /* igual nos dois
+                                        Spreading Factor: Change the spreading factor of the radio.
+                                        LoRa.setSpreadingFactor(spreadingFactor);
+                                        spreadingFactor - spreading factor, defaults to 7
+                                        Supported values are between 6 and 12. If a spreading factor of 6 is set, implicit header mode must be used to transmit and receive packets.*/
+  LoRa.setSignalBandwidth(125E3);      /* igual nos dois
+                                        Signal Bandwidth:  Change the signal bandwidth of the radio.
+                                        LoRa.setSignalBandwidth(signalBandwidth);
+                                        signalBandwidth - signal bandwidth in Hz, defaults to 125E3.
+                                        Supported values are 7.8E3, 10.4E3, 15.6E3, 20.8E3, 31.25E3, 41.7E3, 62.5E3, 125E3, 250E3, and 500E3.*/
+  LoRa.setCodingRate4(5);              /* CR 4/5 (igual nos dois)
+                                        Coding Rate: Change the coding rate of the radio.
+                                        LoRa.setCodingRate4(codingRateDenominator);
+                                        codingRateDenominator - denominator of the coding rate, defaults to 5
+                                        Supported values are between 5 and 8, these correspond to coding rates of 4/5 and 4/8. The coding rate numerator is fixed at 4.*/
+  LoRa.setPreambleLength(8);           /* igual nos dois
+                                      Preamble Length: Change the preamble length of the radio.
+                                      LoRa.setPreambleLength(preambleLength);
+                                      preambleLength - preamble length in symbols, defaults to 8
+                                      Supported values are between 6 and 65535.*/
+  LoRa.setSyncWord(0x12);              /* igual nos dois (privado) — escolha um e padronize
+                                      Sync Word: Change the sync word of the radio.
+                                      LoRa.setSyncWord(syncWord);
+                                      syncWord - byte value to use as the sync word, defaults to 0x12 */
+  LoRa.enableCrc();                   /* ATIVAR CRC (nos dois)
+                                      Enable or disable CRC usage, by default a CRC is not used.
+                                      LoRa.enableCrc();
+                                      LoRa.disableCrc();*/
+                                      
   // register the receive callback
   LoRa.onReceive(onReceive);
   LoRa.onTxDone(onTxDone);
@@ -735,32 +823,44 @@ void start_LoRa()
 
 void sendReadings()
 {
-  
-    // if (runEvery(5000))
-    // { // repeat every 5 sec
-      // TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
-      if (distance_reading_done == 1) // Just sends after the US have done all the measurementes
-      {
 
-        // TODO: Do I know it the receiver received the LoRa message? how?
-        LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
+  logState(40); // está no sendReadings
+                  // if (runEvery(5000))
+                  // { // repeat every 5 sec
+  // TODO se recebe confirmação de recebimento do gateway, não pode enviar mais para economizar bateria ver email: Checagem de Retorno de mensagem LoRa
+  if (distance_reading_done) // Just sends after the US have done all the measurementes
+  {
 
-        // Send LoRa packet to receiver
-        LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
-        distance_reading_done = false;
+    // TODO: Do I know it the receiver received the LoRa message? how?
+    LoRaMessage = String(sensor_id) + "/" + String(readingDistance) + "&" + String(readingDistance);
 
-        #ifdef enableSerialLog
-              Serial.print("Sending packet N°: ");
-              Serial.println(readingID);
-              Serial.print("LoRaMessage: ");
-              Serial.println(LoRaMessage);
-        #endif
+    // Send LoRa packet to receiver
+    LoRa_sendMessage(LoRaMessage); // send a LoRaMessage
+    distance_reading_done = false;
 
-        readingID++;
-      }
+#ifdef enableSerialLog
+    Serial.print("Sending packet N°: ");
+    Serial.println(readingID);
+    Serial.print("LoRaMessage: ");
+    Serial.println(LoRaMessage);
+#endif
+#ifdef enableWatchDog
+    IWatchdog.reload();
+#endif
+
+    readingID++;
+  }
   // }
 }
 
 #endif // enableLoRa
+
+/*********************************************** Helpers ***********************************************/
+void logState(uint16_t code)
+{
+  enableBackupDomain();
+  setBackupRegister(0, code);
+  disableBackupDomain();
+}
 
 /*********************************************** End Function Definitions ********************************************/
