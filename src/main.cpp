@@ -127,7 +127,7 @@ shutdown mode: high wake-up latency (possible hundereds of ms or second timefram
 #endif
 
 /*********************************************** Global Variables ***********************************************/
-String version = "System Version: SAPM_Sensor_BluePill_2025082803"; // ==> CHANGE HERE! <==
+String version = "System Version: SAPM_Sensor_BluePill_2026040701"; // ==> CHANGE HERE! <==
 
 #ifdef enableWatchDog
 const int ledPin = PB13; // TODO: Just to have visual information that it is working.
@@ -544,6 +544,7 @@ void readUltrasonic()
   } // for1
 
   float median = calculateMedian(readings, ultrasonic_readings_array_size); // Calculate the Median
+  readingDistance = (unsigned long)median; // Fix #3: assign median back so LoRa packet carries filtered value, not last raw reading
 
   // TODO: Verifica se a median mudou significativamente
   // if (abs(median - lastEchoDistance) >= 1) { // check for change in distance só manda msg se mudar o valor > 1cm
