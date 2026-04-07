@@ -1,4 +1,14 @@
 # SAPM_Sensor_BluePill
+
+> **⚠️ This repository has been migrated.**
+> Production firmware for Station-01 is now maintained in the main SAPI repository:
+> **[alexandreberg/SAPI_Sistema_de_Alerta_Previo_de_Inundacoes](https://github.com/alexandreberg/SAPI_Sistema_de_Alerta_Previo_de_Inundacoes)**
+> under `App/stations/Rain_Gauge_Bluepill_estacao-01/`
+>
+> The active production branch here is `Station-01`. The latest deployed version is
+> `SAPM_Sensor_BluePill_2026040701` — see the
+> [v1.0.0 release](https://github.com/alexandreberg/SAPI_Sistema_de_Alerta_Previo_de_Inundacoes/releases/tag/station-01-v1.0.0)
+> for the firmware binary.
 This is a code for a flood alert system, FEWS (Flood Early Warning System) or in Portuguese SAPI (Sistema de Alerta Prévio de Inundações) the "M" in SAPM comes from de "Modular" version that will accept other types of sensors.
 This version runs on STM32 BluePill.
 
